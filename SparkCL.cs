@@ -113,7 +113,7 @@ namespace SparkCL
         }
     }
 
-    class Program
+    public class Program
     {
         SparkOCL.Program program;
 
@@ -129,7 +129,7 @@ namespace SparkCL
         }
     }
 
-    class ArgInfo
+    public class ArgInfo
     {
         public bool IsPointer;
         public KernelArgAddressQualifier Qualifier;
@@ -157,7 +157,7 @@ namespace SparkCL
         }
     }
     
-    class Kernel
+    public class Kernel
     {
         SparkOCL.Kernel Inner;
         public NDRange GlobalWork { get; set; }

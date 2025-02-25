@@ -220,7 +220,7 @@ namespace SparkOCL
     }
 
 
-    class NDRange
+    public class NDRange
     {
         public uint Dimensions { get; }
         public nuint[] Sizes { get; } = [1, 1, 1];
