@@ -244,7 +244,7 @@ namespace SparkCL
         internal Buffer<T> buffer;
 //        internal void* mappedPtr;
         internal Array<T> array;
-        public nuint Count { get => array.Count; }
+        public int Count { get => array.Count; }
 
         public Memory(ReadOnlySpan<T> in_array, MemFlags flags = MemFlags.ReadWrite)
         {
@@ -255,7 +255,7 @@ namespace SparkCL
         public Memory(StreamReader file, MemFlags flags = MemFlags.ReadWrite)
         {
             var sizeStr = file.ReadLine();
-            var size = nuint.Parse(sizeStr!);
+            var size = int.Parse(sizeStr!);
             this.array = new Array<T>(size);
 
             for (int i = 0; i < (int)size; i++)
@@ -272,7 +272,7 @@ namespace SparkCL
             buffer = new(Core.context!, flags | MemFlags.UseHostPtr, this.array);
         }
 
-        public Memory (nuint size, MemFlags flags = MemFlags.ReadWrite)
+        public Memory (int size, MemFlags flags = MemFlags.ReadWrite)
         {
             array = new(size);
             buffer = new(Core.context!, flags | MemFlags.UseHostPtr, this.array);
@@ -332,7 +332,7 @@ namespace SparkCL
             {
                 throw new Exception("Source and destination sizes doesn't match");
             }
-            Core.queue!.EnqueueCopyBuffer(buffer, destination.buffer, 0, 0, Count, out var ev, waitList);
+            Core.queue!.EnqueueCopyBuffer(buffer, destination.buffer, 0, 0, (nuint) Count, out var ev, waitList);
             #if DEBUG_TIME
                 Core.IOEvents.Add(ev);
             #endif

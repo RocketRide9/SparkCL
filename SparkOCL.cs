@@ -388,7 +388,7 @@ namespace SparkOCL
                     buffer.Handle,
                     blocking,
                     offset,
-                    array.Count * (nuint) sizeof(T),
+                    (nuint) array.Count * (nuint) sizeof(T),
                     array.Buf,
                     wait_list == null ? 0 : (uint) wait_list.Length,
                     wait_list == null ? null : wait_list_p,
@@ -416,7 +416,7 @@ namespace SparkOCL
                 buffer.Handle,
                 blocking,
                 offset,
-                array.Count * (nuint) sizeof(T),
+                (nuint) array.Count * (nuint) sizeof(T),
                 array.Buf,
                 0,
                 null,
@@ -627,7 +627,7 @@ namespace SparkOCL
         unsafe public Buffer(Context context, MemFlags flags, SparkOCL.Array<T> array)
         {
             int err;
-            Handle = OCL.CreateBuffer(context.Handle, flags, (nuint) sizeof(T) * array.Count, array.Buf, &err);
+            Handle = OCL.CreateBuffer(context.Handle, flags, (nuint) sizeof(T) * (nuint)array.Count, array.Buf, &err);
             if (err != (int) ErrorCodes.Success)
             {
                 throw new System.Exception($"Failed to create buffer, code: {err}");
@@ -644,21 +644,21 @@ namespace SparkOCL
     where T: unmanaged
     {
         public T* Buf { get; internal set; }
-        public nuint Count { get; }
+        public int Count { get; }
         public nuint ElementSize { get; }
 
         public Array (ReadOnlySpan<T> array)
         {
             ElementSize = (nuint)sizeof(T);
             Buf = (T*)NativeMemory.AlignedAlloc((nuint)array.Length * ElementSize, 4096);
-            Count = (nuint)array.Length;
+            Count = array.Length;
             array.CopyTo(new Span<T>(Buf, array.Length));
         }
 
-        public Array (nuint size)
+        public Array (int size)
         {
             ElementSize = (nuint)sizeof(T);
-            Buf = (T*)NativeMemory.AlignedAlloc(size * ElementSize, 4096);
+            Buf = (T*)NativeMemory.AlignedAlloc((nuint)size * ElementSize, 4096);
             Count = size;
         }
 
