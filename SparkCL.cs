@@ -14,6 +14,7 @@ using System.Collections.Generic;
 // очереди команд и устройства.
 namespace SparkCL
 {
+    using System.Collections;
     using SparkOCL;
     static class StarterKit
     {
@@ -238,7 +239,7 @@ namespace SparkCL
         }
     }
 
-    public unsafe class Memory<T> : IDisposable
+    public unsafe class Memory<T> : IDisposable, IEnumerable<T>
     where T: unmanaged, INumber<T> 
     {
         internal Buffer<T> buffer;
@@ -392,6 +393,16 @@ namespace SparkCL
             // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
             Dispose(disposing: true);
             GC.SuppressFinalize(this);
+        }
+
+        public IEnumerator<T> GetEnumerator()
+        {
+            return array.GetEnumerator();
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
         }
     }
 }

@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using static SparkOCL.CLHandle;
 using System.Linq;
+using System.Collections;
 
 // обёртка над Silk.NET.OpenCL для удобного использования в csharp
 namespace SparkOCL
@@ -14,6 +15,10 @@ namespace SparkOCL
     internal static class CLHandle
     {
         static public CL OCL = CL.GetApi();
+        static public string AppendErrCode(string description, ErrorCodes code)
+        {
+            return description + $"{code}({(int)code})";
+        }
     }
 
     public class Event: IDisposable
@@ -27,11 +32,11 @@ namespace SparkOCL
         )
         {
             ulong time;
-            int err = OCL.GetEventProfilingInfo(Handle, info, 8, &time, null);
+            var err = (ErrorCodes)OCL.GetEventProfilingInfo(Handle, info, 8, &time, null);
 
-            if (err != (int)ErrorCodes.Success)
+            if (err != ErrorCodes.Success)
             {
-                throw new System.Exception($"Couldn't get profiling info, code: {err}");
+                throw new Exception(AppendErrCode("Couldn't get profiling info, code: ", err));
             }
 
             return time;
@@ -41,11 +46,11 @@ namespace SparkOCL
         {
 
             var handle = Handle;
-            int err = OCL.WaitForEvents(1, &handle);
+            var err = (ErrorCodes)OCL.WaitForEvents(1, &handle);
             
-            if (err != (int)ErrorCodes.Success)
+            if (err != ErrorCodes.Success)
             {
-                throw new System.Exception($"Couldn't wait for event, code: {err}");
+                throw new Exception(AppendErrCode("Couldn't wait for event, code: ", err));
             }
         }
 
@@ -93,12 +98,12 @@ namespace SparkOCL
             Device device)
         {
             var device_h = device.Handle;
-            int err_p;
-            var h = OCL.CreateContext(null, 1, &device_h, null, null, &err_p);
+            ErrorCodes err;
+            var h = OCL.CreateContext(null, 1, &device_h, null, null, (int *)&err);
 
-            if (err_p != (int)ErrorCodes.Success)
+            if (err != ErrorCodes.Success)
             {
-                throw new System.Exception($"Couldn't create context on requested device, code: {err_p}");
+                throw new Exception(AppendErrCode("Couldn't create context on requested device, code: ", err));
             }
 
             var res = new Context(h);
@@ -121,11 +126,11 @@ namespace SparkOCL
 
             fixed (nint* p = contextProperties)
             {
-                int errNum;
-                var context_handle = OCL.CreateContextFromType(p, DeviceType.Gpu, null, null, out errNum);
-                if (errNum != (int) ErrorCodes.Success)
+                ErrorCodes err;
+                var context_handle = OCL.CreateContextFromType(p, DeviceType.Gpu, null, null,  (int *)&err);
+                if (err != ErrorCodes.Success)
                 {
-                    throw new System.Exception($"Couldn't create context on requested device type, code: {errNum}");
+                    throw new Exception(AppendErrCode("Couldn't create context on requested device type, code: {errNum}", err));
                 }
 
                 return new Context(context_handle);
@@ -139,7 +144,7 @@ namespace SparkOCL
 
         ~Context()
         {
-            CLHandle.OCL.ReleaseContext(Handle);
+            OCL.ReleaseContext(Handle);
         }
     }
 
@@ -149,17 +154,17 @@ namespace SparkOCL
         unsafe public static void Get(out List<Platform> platforms)
         {
             uint n = 0;
-            var err = OCL.GetPlatformIDs(0, null, &n);
-            if (err != (int) ErrorCodes.Success)
+            var err = (ErrorCodes)OCL.GetPlatformIDs(0, null, &n);
+            if (err != ErrorCodes.Success)
             {
-                throw new System.Exception($"Couldn't get platform ids, code: {err}");
+                throw new Exception(AppendErrCode("Couldn't get platform ids, code: ", err));
             }
 
             var ids = new nint[n];
-            err = OCL.GetPlatformIDs(n, ids, (uint *)null);
-            if (err != (int) ErrorCodes.Success)
+            err = (ErrorCodes)OCL.GetPlatformIDs(n, ids, (uint *)null);
+            if (err != ErrorCodes.Success)
             {
-                throw new System.Exception($"Couldn't get platform ids, code: {err}");
+                throw new Exception(AppendErrCode("Couldn't get platform ids, code: ", err));
             }
 
             platforms = new()
@@ -176,17 +181,17 @@ namespace SparkOCL
         unsafe public void GetDevices(DeviceType type, out List<Device> devices)
         {
             uint n = 0;
-            var err = OCL.GetDeviceIDs(Handle, type, 0, null, &n);
-            if (err != (int) ErrorCodes.Success)
+            var err = (ErrorCodes)OCL.GetDeviceIDs(Handle, type, 0, null, &n);
+            if (err != ErrorCodes.Success)
             {
-                throw new System.Exception($"Couldn't get devices ID, code: {err}");
+                throw new Exception(AppendErrCode("Couldn't get devices ID, code: ", err));
             }
 
             var ids = new nint[n];
-            err = OCL.GetDeviceIDs(Handle, type, n, ids, (uint *)null);
-            if (err != (int) ErrorCodes.Success)
+            err = (ErrorCodes)OCL.GetDeviceIDs(Handle, type, n, ids, (uint *)null);
+            if (err != ErrorCodes.Success)
             {
-                throw new System.Exception($"Couldn't get devices ID, code: {err}");
+                throw new Exception(AppendErrCode("Couldn't get devices ID, code: ", err));
             }
 
             devices = new((int) n);
@@ -215,7 +220,7 @@ namespace SparkOCL
 
         ~Device()
         {
-            CLHandle.OCL.ReleaseDevice(Handle);
+            OCL.ReleaseDevice(Handle);
         }
     }
 
@@ -272,29 +277,29 @@ namespace SparkOCL
         public unsafe CommandQueue(Context context, Device device)
         {
 
-            int err;
+            ErrorCodes err;
             QueueProperties[] props = [
                 (QueueProperties)CommandQueueInfo.Properties, (QueueProperties) CommandQueueProperties.ProfilingEnable,
                 0
             ];
             fixed (QueueProperties *p = props)
             {
-                Handle = OCL.CreateCommandQueueWithProperties(context.Handle, device.Handle, p, &err);
+                Handle = OCL.CreateCommandQueueWithProperties(context.Handle, device.Handle, p, (int *)&err);
             }
 
-            if (err != (int)ErrorCodes.Success)
+            if (err != ErrorCodes.Success)
             {
-                throw new System.Exception($"Couldn't create command queue, code: {err}");
+                throw new Exception(AppendErrCode("Couldn't create command queue, code: ", err));
             }
         }
 
         public void Finish()
         {
-            int err = CLHandle.OCL.Finish(Handle);
+            var err = (ErrorCodes)OCL.Finish(Handle);
 
-            if (err != (int)ErrorCodes.Success)
+            if (err != ErrorCodes.Success)
             {
-                throw new System.Exception($"Couldn't finish command queue, code: {err}");
+                throw new Exception(AppendErrCode("Couldn't finish command queue, code: ", err));
             }
         }
 
@@ -312,14 +317,14 @@ namespace SparkOCL
             Event[]? wait_list = null)
         {
 
-            int err;
+            ErrorCodes err;
             nint event_h;
             fixed (nuint *g = global.Sizes)
             fixed (nuint *o = offset.Sizes)
             fixed (nuint *l = local.Sizes)
             fixed (nint *wait_list_p = Nintize(wait_list))
             {
-                err = OCL.EnqueueNdrangeKernel(
+                err = (ErrorCodes)OCL.EnqueueNdrangeKernel(
                     Handle,
                     kernel.Handle,
                     global.Dimensions,
@@ -332,9 +337,9 @@ namespace SparkOCL
             }
             @event = new Event(event_h);
 
-            if (err != (int)ErrorCodes.Success)
+            if (err != ErrorCodes.Success)
             {
-                throw new System.Exception($"Couldn't enqueue kernel, code: {err}");
+                throw new Exception(AppendErrCode("Couldn't enqueue kernel, code: ", err));
             }
         }
 
@@ -348,6 +353,7 @@ namespace SparkOCL
         where T : unmanaged
         {
             nint event_h;
+            ErrorCodes err;
             var ptr = OCL.EnqueueMapBuffer(
                 Handle,
                 buffer.Handle,
@@ -358,11 +364,11 @@ namespace SparkOCL
                 0,
                 null,
                 out event_h,
-                out int err);
+                (int *)&err);
 
-            if (err != (int) ErrorCodes.Success)
+            if (err != ErrorCodes.Success)
             {
-                throw new System.Exception($"Couldn't enqueue buffer map, code: {err}");
+                throw new Exception(AppendErrCode("Couldn't enqueue buffer map, code: ", err));
             }
             @event = new Event(event_h);
 
@@ -380,10 +386,10 @@ namespace SparkOCL
         {
 
             nint event_h;
-            int err;
+            ErrorCodes err;
             fixed (nint *wait_list_p = Nintize(wait_list))
             {
-                err = OCL.EnqueueReadBuffer(
+                err = (ErrorCodes)OCL.EnqueueReadBuffer(
                     Handle,
                     buffer.Handle,
                     blocking,
@@ -394,9 +400,9 @@ namespace SparkOCL
                     wait_list == null ? null : wait_list_p,
                     out event_h);
             }
-            if (err != (int) ErrorCodes.Success)
+            if (err != ErrorCodes.Success)
             {
-                throw new System.Exception($"Couldn't enqueue buffer read, code: {err}");
+                throw new Exception(AppendErrCode("Couldn't enqueue buffer read, code: ", err));
             }
             @event = new Event(event_h);
         }
@@ -411,7 +417,7 @@ namespace SparkOCL
         {
 
             nint event_h;
-            int err = OCL.EnqueueWriteBuffer(
+            var err = (ErrorCodes)OCL.EnqueueWriteBuffer(
                 Handle,
                 buffer.Handle,
                 blocking,
@@ -422,9 +428,9 @@ namespace SparkOCL
                 null,
                 out event_h);
 
-            if (err != (int) ErrorCodes.Success)
+            if (err != ErrorCodes.Success)
             {
-                throw new System.Exception($"Couldn't enqueue buffer read, code: {err}");
+                throw new Exception(AppendErrCode("Couldn't enqueue buffer read, code: ", err));
             }
             @event = new Event(event_h);
         }
@@ -437,7 +443,7 @@ namespace SparkOCL
         {
 
             nint event_h;
-            int err = OCL.EnqueueUnmapMemObject(
+            var err = (ErrorCodes)OCL.EnqueueUnmapMemObject(
                 Handle,
                 buffer.Handle,
                 ptr,
@@ -445,9 +451,9 @@ namespace SparkOCL
                 null,
                 out event_h);
 
-            if (err != (int) ErrorCodes.Success)
+            if (err != ErrorCodes.Success)
             {
-                throw new System.Exception($"Couldn't enqueue memory object unmap, code: {err}");
+                throw new Exception(AppendErrCode("Couldn't enqueue memory object unmap, code: ", err));
             }
             @event = new Event(event_h);
         }
@@ -463,10 +469,10 @@ namespace SparkOCL
         where T : unmanaged
         {
             nint event_h;
-            int err;
+            ErrorCodes err;
             fixed (nint *wait_list_p = Nintize(wait_list))
             {
-                err = OCL.EnqueueCopyBuffer(
+                err = (ErrorCodes)OCL.EnqueueCopyBuffer(
                     Handle,
                     src.Handle,
                     dst.Handle,
@@ -478,9 +484,9 @@ namespace SparkOCL
                     out event_h);
             }
 
-            if (err != (int)ErrorCodes.Success)
+            if (err != ErrorCodes.Success)
             {
-                throw new System.Exception($"Couldn't enqueue memory object unmap, code: {err}");
+                throw new Exception(AppendErrCode("Couldn't enqueue memory object unmap, code: ", err));
             }
             @event = new Event(event_h);
         }
@@ -492,7 +498,7 @@ namespace SparkOCL
 
         ~CommandQueue()
         {
-            CLHandle.OCL.ReleaseCommandQueue(Handle);
+            OCL.ReleaseCommandQueue(Handle);
         }
     }
 
@@ -504,18 +510,18 @@ namespace SparkOCL
             Program program,
             string name)
         {
-            int err;
-            Handle = OCL.CreateKernel(program.Handle, Encoding.ASCII.GetBytes(name), &err);
+            ErrorCodes err;
+            Handle = OCL.CreateKernel(program.Handle, Encoding.ASCII.GetBytes(name), (int *)&err);
 
-            if (err != (int) ErrorCodes.Success)
+            if (err != ErrorCodes.Success)
             {
-                throw new System.Exception($"Failed to create kernel, code: {err}");
+                throw new Exception(AppendErrCode("Failed to create kernel, code: ", err));
             }
         }
 
         ~Kernel()
         {
-            CLHandle.OCL.ReleaseKernel(Handle);
+            OCL.ReleaseKernel(Handle);
         }
         
         unsafe private void GetKernelInfo<Y>(
@@ -526,7 +532,7 @@ namespace SparkOCL
             nuint *param_value_size_ret)
         where Y: unmanaged
         {
-            int err = OCL.GetKernelArgInfo(
+            var err = (ErrorCodes)OCL.GetKernelArgInfo(
                 Handle,
                 arg_index,
                 param_name,
@@ -534,10 +540,12 @@ namespace SparkOCL
                 param_value,
                 param_value_size_ret);
                 
-            if (err != (int) ErrorCodes.Success)
+            if (err != ErrorCodes.Success)
             {
-                throw new System.Exception(
-                    $"Failed to get kernel argument info (index = {arg_index}), code: {err}");
+                throw new Exception(AppendErrCode(
+                    $"Failed to get kernel argument info (index = {arg_index}), code: ",
+                    err
+                ));
             }
         }
         
@@ -588,10 +596,10 @@ namespace SparkOCL
         {
             var binding = buffer.Handle;
 
-            int err = OCL.SetKernelArg(Handle, arg_index, (nuint)sizeof(nint), ref binding);
-            if (err != (int) ErrorCodes.Success)
+            var err = (ErrorCodes)OCL.SetKernelArg(Handle, arg_index, (nuint)sizeof(nint), ref binding);
+            if (err != ErrorCodes.Success)
             {
-                throw new System.Exception($"Failed to set kernel argument (index = {arg_index}), code: {err}");
+                throw new Exception(AppendErrCode("Failed to set kernel argument (index = {arg_index}), code: ", err));
             }
         }
 
@@ -600,10 +608,10 @@ namespace SparkOCL
             T arg)
         where T: unmanaged
         {
-            int err = OCL.SetKernelArg(Handle, arg_index, (nuint)sizeof(T), ref arg);
-            if (err != (int) ErrorCodes.Success)
+            var err = (ErrorCodes)OCL.SetKernelArg(Handle, arg_index, (nuint)sizeof(T), ref arg);
+            if (err != ErrorCodes.Success)
             {
-                throw new System.Exception($"Failed to set kernel argument, code: {err}, arg size: {(nuint)sizeof(T)}");
+                throw new Exception(AppendErrCode($"Failed to set kernel argument, arg size: {(nuint)sizeof(T)}, code: ", err));
             }
         }
 
@@ -611,10 +619,10 @@ namespace SparkOCL
             uint arg_index,
             nuint sz)
         {
-            int err = OCL.SetKernelArg(Handle, arg_index, (nuint)sizeof(float) * sz, null);
-            if (err != (int)ErrorCodes.Success)
+            var err = (ErrorCodes)OCL.SetKernelArg(Handle, arg_index, (nuint)sizeof(float) * sz, null);
+            if (err != ErrorCodes.Success)
             {
-                throw new System.Exception($"Failed to set kernel argument, code: {err}");
+                throw new Exception(AppendErrCode("Failed to set kernel argument, code: ", err));
             }
         }
     }
@@ -626,21 +634,21 @@ namespace SparkOCL
 
         unsafe public Buffer(Context context, MemFlags flags, SparkOCL.Array<T> array)
         {
-            int err;
-            Handle = OCL.CreateBuffer(context.Handle, flags, (nuint) sizeof(T) * (nuint)array.Count, array.Buf, &err);
-            if (err != (int) ErrorCodes.Success)
+            ErrorCodes err;
+            Handle = OCL.CreateBuffer(context.Handle, flags, (nuint) sizeof(T) * (nuint)array.Count, array.Buf, (int *)&err);
+            if (err != ErrorCodes.Success)
             {
-                throw new System.Exception($"Failed to create buffer, code: {err}");
+                throw new Exception(AppendErrCode("Failed to create buffer, code: ", err));
             }
         }
 
         ~Buffer()
         {
-            CLHandle.OCL.ReleaseMemObject(Handle);
+            OCL.ReleaseMemObject(Handle);
         }
     }
 
-    unsafe class Array<T> : IDisposable
+    unsafe class Array<T> : IDisposable, IEnumerable<T>
     where T: unmanaged
     {
         public T* Buf { get; internal set; }
@@ -706,6 +714,19 @@ namespace SparkOCL
             Dispose(disposing: true);
             GC.SuppressFinalize(this);
         }
+
+        public IEnumerator<T> GetEnumerator()
+        {
+            for (int i = 0; i < Count; i++)
+            {
+                yield return this[i];
+            }
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
+        }
     }
 
     class Program
@@ -717,19 +738,19 @@ namespace SparkOCL
             Device device,
             string fileName)
         {
-            using StreamReader sr = new StreamReader(fileName);
+            using var sr = new StreamReader(fileName);
             string clStr = sr.ReadToEnd();
 
-            int err;
-            var program = OCL.CreateProgramWithSource(context.Handle, 1, new string[] { clStr }, null, &err);
-            if (program == IntPtr.Zero || err != (int) ErrorCodes.Success)
+            ErrorCodes err;
+            var program = OCL.CreateProgramWithSource(context.Handle, 1, [clStr], null, (int *)&err);
+            if (program == IntPtr.Zero || err != ErrorCodes.Success)
             {
-                throw new System.Exception($"Failed to create CL program from source, code: {err}");
+                throw new Exception(AppendErrCode("Failed to create CL program from source, code: ", err));
             }
 
-            var errNum = OCL.BuildProgram(program, 0, null, (byte*)null, null, null);
+            var errNum = (ErrorCodes)OCL.BuildProgram(program, 0, null, (byte*)null, null, null);
 
-            if (errNum != (int)ErrorCodes.Success)
+            if (errNum != ErrorCodes.Success)
             {
                 _ = OCL.GetProgramBuildInfo(program, device.Handle, ProgramBuildInfo.BuildLog, 0, null, out nuint buildLogSize);
                 byte[] log = new byte[buildLogSize / (nuint)sizeof(byte)];
@@ -737,7 +758,7 @@ namespace SparkOCL
                 {
                     OCL.GetProgramBuildInfo(program, device.Handle, ProgramBuildInfo.BuildLog, buildLogSize, pValue, null);
                 }
-                string? build_log = System.Text.Encoding.UTF8.GetString(log);
+                string? build_log = Encoding.UTF8.GetString(log);
 
                 //Console.WriteLine("Error in kernel: ");
                 Console.WriteLine("=============== OpenCL Program Build Info ================");
@@ -745,7 +766,7 @@ namespace SparkOCL
                 Console.WriteLine("==========================================================");
 
                 OCL.ReleaseProgram(program);
-                throw new Exception($"OpenCL build failed.");
+                throw new Exception(AppendErrCode("OpenCL build failed.", err));
             }
 
             return new Program(program);
@@ -758,7 +779,7 @@ namespace SparkOCL
 
         ~Program()
         {
-            CLHandle.OCL.ReleaseProgram(Handle);
+            OCL.ReleaseProgram(Handle);
         }
     }
 }
