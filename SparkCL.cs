@@ -132,18 +132,20 @@ namespace SparkCL
 
     public class ArgInfo
     {
-        public bool IsPointer;
-        public KernelArgAddressQualifier Qualifier;
-        public Type DataType;
+        public bool IsPointer { get; }
+        public KernelArgAddressQualifier Qualifier { get; }
+        public Type DataType { get; }
+        public string TypeName { get; }
 
         public ArgInfo(string typeName, KernelArgAddressQualifier qualifier)
         {
             Qualifier = qualifier;
+            TypeName = typeName;
             int base_end = typeName.LastIndexOf('*');
             if (base_end == typeName.Length - 1)
             {
                 IsPointer = true;
-                typeName = typeName.Substring(0, base_end);
+                typeName = typeName[..base_end];
             } else {
                 IsPointer = false;
             }
@@ -153,8 +155,21 @@ namespace SparkCL
                 "float" => typeof(float),
                 "double" => typeof(double),
                 "int" => typeof(int),
+                "uint" => typeof(uint),
                 _ => throw new NotImplementedException(),
             };
+        }
+
+        public bool IsEqualTo<T>(T some)
+        where T: unmanaged, INumber<T>
+        {
+            return typeof(T) == DataType;
+        }
+
+        public bool IsEqualTo<T>(Memory<T> _)
+        where T: unmanaged, INumber<T>
+        {
+            return IsPointer && DataType == typeof(T);
         }
     }
     
@@ -187,16 +202,16 @@ namespace SparkCL
             SparkCL.Memory<T> mem)
         where T: unmanaged, INumber<T>
         {
-            Inner.SetArg(lastPushed, mem.buffer);
+            SetArg(lastPushed, mem);
             lastPushed++;
             return lastPushed;
         }
 
         public uint PushArg<T>(
             T arg)
-        where T: unmanaged
+        where T: unmanaged, INumber<T>
         {
-            Inner.SetArg(lastPushed, arg);
+            SetArg(lastPushed, arg);
             lastPushed++;
             return lastPushed;
         }
@@ -204,9 +219,15 @@ namespace SparkCL
         public void SetArg<T>(
             uint idx,
             T arg)
-        where T: unmanaged
+        where T: unmanaged, INumber<T>
         {
             Inner.SetArg(idx, arg);
+
+            var info = GetArgInfo(idx);
+            if (!info.IsEqualTo(arg))
+            {
+                throw new ArgumentException($"Expected \"{info.TypeName}\", got \"{typeof(T)}\"");
+            }
         }
 
         public void SetArg<T>(
@@ -215,13 +236,26 @@ namespace SparkCL
         where T: unmanaged, INumber<T>
         {
             Inner.SetArg(idx, mem.buffer);
+            
+            var info = GetArgInfo(idx);
+            if (!info.IsEqualTo(mem))
+            {
+                throw new ArgumentException($"Expected \"{info.TypeName}\", got \"{typeof(T)}\"");
+            }
         }
 
-        public void SetSize(
+        public void SetSize<T>(
             uint idx,
             nuint sz)
+        where T: unmanaged
         {
-            Inner.SetSize(idx, sz);
+            Inner.SetSize<T>(idx, sz);
+
+            var info = GetArgInfo(idx);
+            if (!info.IsEqualTo(sz))
+            {
+                throw new ArgumentException($"Expected \"{info.TypeName}\", got \"{typeof(T)}*\"");
+            }
         }
         
         public ArgInfo GetArgInfo(uint arg_index)

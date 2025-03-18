@@ -571,7 +571,8 @@ namespace SparkOCL
                     null);
             }
 
-            return Encoding.UTF8.GetString(infoBytes);
+            var len = Array.IndexOf(infoBytes, (byte)0);
+            return Encoding.UTF8.GetString(infoBytes, 0, len);
         }
         
         unsafe public KernelArgAddressQualifier GetArgAddressQualifier(
@@ -580,7 +581,7 @@ namespace SparkOCL
         {
             KernelArgAddressQualifier res;
 
-            GetKernelInfo<KernelArgAddressQualifier>(
+            GetKernelInfo(
                 arg_index,
                 KernelArgInfo.AddressQualifier, 
                 sizeof(KernelArgAddressQualifier), &res,
@@ -615,11 +616,19 @@ namespace SparkOCL
             }
         }
 
-        unsafe public void SetSize(
+        /// <summary>
+        /// Set size of kernel local array.
+        /// </summary>
+        /// <typeparam name="T">Type of array</typeparam>
+        /// <param name="arg_index"></param>
+        /// <param name="Length">Array Length</param>
+        /// <exception cref="Exception"></exception>
+        unsafe public void SetSize<T>(
             uint arg_index,
-            nuint sz)
+            nuint Length)
+        where T: unmanaged
         {
-            var err = (ErrorCodes)OCL.SetKernelArg(Handle, arg_index, (nuint)sizeof(float) * sz, null);
+            var err = (ErrorCodes)OCL.SetKernelArg(Handle, arg_index, (nuint)sizeof(T) * Length, null);
             if (err != ErrorCodes.Success)
             {
                 throw new Exception(AppendErrCode("Failed to set kernel argument, code: ", err));
