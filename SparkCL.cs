@@ -92,27 +92,6 @@ namespace SparkCL
             return c - s;
         }
     }
-    
-    static class KernelArgExt
-    {
-        public static void ArgValue(this float val, SparkCL.Kernel kernel, uint index)
-        {
-            kernel.SetArg(index, val);
-        }
-        public static void ArgValue(this int val, SparkCL.Kernel kernel, uint index)
-        {
-            kernel.SetArg(index, val);
-        }
-        public static void ArgValue(this double val, SparkCL.Kernel kernel, uint index)
-        {
-            kernel.SetArg(index, val);
-        }
-        
-        public static void ArgLocalSize(this nuint val, SparkCL.Kernel kernel, uint index)
-        {
-            kernel.SetSize(index, val);
-        }
-    }
 
     public class Program
     {
