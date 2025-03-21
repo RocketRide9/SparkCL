@@ -3,11 +3,8 @@
 using Silk.NET.OpenCL;
 using Quasar.Native;
 
-using System;
 using System.Numerics;
-using System.IO;
 using System.Globalization;
-using System.Collections.Generic;
 
 // идея сократить область применения до вычисления на одном устройстве.
 // это должно упростить использование OpenCL, абстрагируя понятия контекста,
@@ -58,6 +55,7 @@ namespace SparkCL
             queue = new CommandQueue(context, device);
         }
         
+        #if DEBUG_TIME
         // Должна быть вызвана после завершения всех операций на устройстве
         static public (ulong IOTime, ulong KernTime) MeasureTime()
         {
@@ -75,6 +73,7 @@ namespace SparkCL
 
             return (IO, Kern);
         }
+        #endif
 
         static public void WaitQueue()
         {
@@ -219,7 +218,7 @@ namespace SparkCL
             var info = GetArgInfo(idx);
             if (!info.IsEqualTo(mem))
             {
-                throw new ArgumentException($"Expected \"{info.TypeName}\", got \"{typeof(T)}\"");
+                throw new ArgumentException($"Expected \"{info.TypeName}\", got \"{typeof(T)}*\"");
             }
         }
 
@@ -233,7 +232,7 @@ namespace SparkCL
             var info = GetArgInfo(idx);
             if (!info.IsEqualTo(sz))
             {
-                throw new ArgumentException($"Expected \"{info.TypeName}\", got \"{typeof(T)}*\"");
+                throw new ArgumentException($"Expected \"{info.TypeName}\", got \"{typeof(T)}\"");
             }
         }
         
@@ -348,7 +347,7 @@ namespace SparkCL
             }
             Core.queue!.EnqueueCopyBuffer(buffer, destination.buffer, 0, 0, (nuint) Count, out var ev, waitList);
             #if DEBUG_TIME
-                Core.IOEvents.Add(ev);
+                Core.KernEvents.Add(ev);
             #endif
             if (blocking)
             {
