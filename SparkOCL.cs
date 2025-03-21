@@ -756,10 +756,13 @@ namespace SparkOCL
             {
                 throw new Exception(AppendErrCode("Failed to create CL program from source, code: ", err));
             }
+            var options = "-cl-kernel-arg-info"u8;
+            fixed (byte *o = options)
+            {
+                err = (ErrorCodes)OCL.BuildProgram(program, 0, null, o, null, null);
+            }
 
-            var errNum = (ErrorCodes)OCL.BuildProgram(program, 0, null, (byte*)null, null, null);
-
-            if (errNum != ErrorCodes.Success)
+            if (err != ErrorCodes.Success)
             {
                 _ = OCL.GetProgramBuildInfo(program, device.Handle, ProgramBuildInfo.BuildLog, 0, null, out nuint buildLogSize);
                 byte[] log = new byte[buildLogSize / (nuint)sizeof(byte)];
