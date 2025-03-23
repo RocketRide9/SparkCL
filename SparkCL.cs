@@ -70,6 +70,8 @@ namespace SparkCL
             {
                 Kern += ev.GetElapsed();
             }
+            KernEvents.Clear();
+            IOEvents.Clear();
 
             return (IO, Kern);
         }
@@ -256,20 +258,26 @@ namespace SparkCL
     {
         internal Buffer<T> buffer;
 //        internal void* mappedPtr;
-        internal Array<T> array;
-        public int Count { get => array.Count; }
+        public Array<T> Array { get; }
+        public int Count { get => Array.Count; }
 
         public Memory(ReadOnlySpan<T> in_array, MemFlags flags = MemFlags.ReadWrite)
         {
-            this.array = new(in_array);
-            buffer = new(Core.context!, flags | MemFlags.UseHostPtr, this.array);
+            this.Array = new(in_array);
+            buffer = new(Core.context!, flags | MemFlags.UseHostPtr, this.Array);
+        }
+
+        static public Memory<T> ForArray(Array<T> in_array, MemFlags flags = MemFlags.ReadWrite)
+        {
+            var buffer = new Buffer<T>(Core.context!, flags | MemFlags.UseHostPtr, in_array);
+            return new Memory<T>(buffer, in_array);
         }
 
         public Memory(StreamReader file, MemFlags flags = MemFlags.ReadWrite)
         {
             var sizeStr = file.ReadLine();
             var size = int.Parse(sizeStr!);
-            this.array = new Array<T>(size);
+            this.Array = new Array<T>(size);
 
             for (int i = 0; i < (int)size; i++)
             {
@@ -280,21 +288,32 @@ namespace SparkCL
                 } catch (SystemException) {
                     throw new System.Exception($"i = {i}");
                 }
-                array[i] = elem;
+                Array[i] = elem;
             }
-            buffer = new(Core.context!, flags | MemFlags.UseHostPtr, this.array);
+            buffer = new(Core.context!, flags | MemFlags.UseHostPtr, this.Array);
         }
 
         public Memory (int size, MemFlags flags = MemFlags.ReadWrite)
         {
-            array = new(size);
-            buffer = new(Core.context!, flags | MemFlags.UseHostPtr, this.array);
+            Array = new(size);
+            buffer = new(Core.context!, flags | MemFlags.UseHostPtr, this.Array);
+        }
+
+        Memory(Buffer<T> buffer, Array<T> array) {
+            this.buffer = buffer;
+            this.Array = array;
+        }
+
+        public Span<T> AsSpan()
+        {
+            var res = new Span<T>(Array.Buf, Array.Count);
+            return res;
         }
 
         public T this[int i]
         {
-            get => array[i];
-            set => array[i] = value;
+            get => Array[i];
+            set => Array[i] = value;
         }
 
         //public Event Map(
@@ -317,7 +336,7 @@ namespace SparkCL
             Event[]? wait_list = null
         )
         {
-            Core.queue!.EnqueueReadBuffer(buffer, blocking, 0, array, out var ev);
+            Core.queue!.EnqueueReadBuffer(buffer, blocking, 0, Array, out var ev);
             #if DEBUG_TIME
                 Core.IOEvents.Add(ev);
             #endif
@@ -328,7 +347,7 @@ namespace SparkCL
             bool blocking = true
         )
         {
-            Core.queue!.EnqueueWriteBuffer(buffer, blocking, 0, array, out var ev);
+            Core.queue!.EnqueueWriteBuffer(buffer, blocking, 0, Array, out var ev);
             #if DEBUG_TIME
                 Core.IOEvents.Add(ev);
             #endif
@@ -360,8 +379,8 @@ namespace SparkCL
         {
             float res = (float)BLAS.dot(
                 (int) this.Count,
-                new ReadOnlySpan<float>(    array.Buf, (int)Count),
-                new ReadOnlySpan<float>(rhs.array.Buf, (int)Count)
+                new ReadOnlySpan<float>(    Array.Buf, (int)Count),
+                new ReadOnlySpan<float>(rhs.Array.Buf, (int)Count)
             );
             return res;
         }
@@ -370,8 +389,8 @@ namespace SparkCL
         {
             double res = (double)BLAS.dot(
                 (int)this.Count,
-                new ReadOnlySpan<double>(array.Buf, (int)Count),
-                new ReadOnlySpan<double>(rhs.array.Buf, (int)Count)
+                new ReadOnlySpan<double>(Array.Buf, (int)Count),
+                new ReadOnlySpan<double>(rhs.Array.Buf, (int)Count)
             );
             return res;
         }
@@ -386,7 +405,7 @@ namespace SparkCL
                 {
                     // TODO: dispose managed state (managed objects)
                 }
-                array.Dispose();
+                Array.Dispose();
                 // TODO: free unmanaged resources (unmanaged objects) and override finalizer
                 // TODO: set large fields to null
                 disposedValue = true;
@@ -409,7 +428,7 @@ namespace SparkCL
 
         public IEnumerator<T> GetEnumerator()
         {
-            return array.GetEnumerator();
+            return Array.GetEnumerator();
         }
 
         IEnumerator IEnumerable.GetEnumerator()

@@ -657,7 +657,12 @@ namespace SparkOCL
         }
     }
 
-    unsafe class Array<T> : IDisposable, IEnumerable<T>
+    /// <summary>
+    /// Should be used as a replacement for csharp arrays, that
+    /// allows zero-copy when plugged into OpenCL buffer.
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    public unsafe class Array<T> : IDisposable, IEnumerable<T>
     where T: unmanaged
     {
         public T* Buf { get; internal set; }
@@ -735,6 +740,18 @@ namespace SparkOCL
         IEnumerator IEnumerable.GetEnumerator()
         {
             return GetEnumerator();
+        }
+
+        public void CopyTo(Array<T> destination)
+        {
+            var sp = new Span<T>(Buf, this.Count);
+            var sp2 = new Span<T>(destination.Buf, destination.Count);
+            sp.CopyTo(sp2);
+        }
+
+        public Span<T> AsSpan()
+        {
+            return new Span<T>(Buf, this.Count);
         }
     }
 
