@@ -273,26 +273,6 @@ namespace SparkCL
             return new Memory<T>(buffer, in_array);
         }
 
-        public Memory(StreamReader file, MemFlags flags = MemFlags.ReadWrite)
-        {
-            var sizeStr = file.ReadLine();
-            var size = int.Parse(sizeStr!);
-            this.Array = new Array<T>(size);
-
-            for (int i = 0; i < (int)size; i++)
-            {
-                var row = file.ReadLine();
-                T elem;
-                try {
-                    elem = T.Parse(row!, CultureInfo.InvariantCulture);
-                } catch (SystemException) {
-                    throw new System.Exception($"i = {i}");
-                }
-                Array[i] = elem;
-            }
-            buffer = new(Core.context!, flags | MemFlags.UseHostPtr, this.Array);
-        }
-
         public Memory (int size, MemFlags flags = MemFlags.ReadWrite)
         {
             Array = new(size);

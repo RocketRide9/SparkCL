@@ -8,6 +8,9 @@ using System.Text;
 using static SparkOCL.CLHandle;
 using System.Linq;
 using System.Collections;
+using SparkCL;
+using System.Globalization;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 // обёртка над Silk.NET.OpenCL для удобного использования в csharp
 namespace SparkOCL
@@ -350,7 +353,7 @@ namespace SparkOCL
             nuint offset,
             nuint count,
             out Event @event)
-        where T : unmanaged
+        where T : unmanaged, INumber<T>
         {
             nint event_h;
             ErrorCodes err;
@@ -382,7 +385,7 @@ namespace SparkOCL
             Array<T> array,
             out Event @event,
             Event[]? wait_list = null)
-        where T : unmanaged
+        where T : unmanaged, INumber<T>
         {
 
             nint event_h;
@@ -413,7 +416,7 @@ namespace SparkOCL
             nuint offset,
             Array<T> array,
             out Event @event)
-        where T : unmanaged
+        where T : unmanaged, INumber<T>
         {
 
             nint event_h;
@@ -439,7 +442,7 @@ namespace SparkOCL
             Buffer<T> buffer,
             void *ptr,
             out Event @event)
-        where T : unmanaged
+        where T : unmanaged, INumber<T>
         {
 
             nint event_h;
@@ -466,7 +469,7 @@ namespace SparkOCL
             nuint count,
             out Event @event,
             Event[]? wait_list = null)
-        where T : unmanaged
+        where T : unmanaged, INumber<T>
         {
             nint event_h;
             ErrorCodes err;
@@ -637,7 +640,7 @@ namespace SparkOCL
     }
 
     class Buffer<T>
-    where T : unmanaged
+    where T : unmanaged, INumber<T>
     {
         public nint Handle { get; }
 
@@ -663,7 +666,7 @@ namespace SparkOCL
     /// </summary>
     /// <typeparam name="T"></typeparam>
     public unsafe class Array<T> : IDisposable, IEnumerable<T>
-    where T: unmanaged
+    where T: unmanaged, INumber<T>
     {
         public T* Buf { get; internal set; }
         public int Count { get; }
@@ -682,6 +685,31 @@ namespace SparkOCL
             ElementSize = (nuint)sizeof(T);
             Buf = (T*)NativeMemory.AlignedAlloc((nuint)size * ElementSize, 4096);
             Count = size;
+        }
+
+        public Array (StreamReader file)
+        {
+            var sizeStr = file.ReadLine();
+
+            ElementSize = (nuint)sizeof(T);
+            Count = int.Parse(sizeStr!);
+            Buf = (T*)NativeMemory.AlignedAlloc((nuint)Count * ElementSize, 4096);
+
+
+            for (int i = 0; i < (int)Count; i++)
+            {
+                var row = file.ReadLine();
+                T elem;
+                try
+                {
+                    elem = T.Parse(row!, CultureInfo.InvariantCulture);
+                }
+                catch (SystemException)
+                {
+                    throw new System.Exception($"i = {i}");
+                }
+                this[i] = elem;
+            }
         }
 
         public T this[int i]
