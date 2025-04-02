@@ -12,6 +12,7 @@ using System.Globalization;
 namespace SparkCL
 {
     using System.Collections;
+    using System.Runtime.CompilerServices;
     using SparkOCL;
     static class StarterKit
     {
@@ -22,14 +23,16 @@ namespace SparkCL
             out SparkOCL.CommandQueue commandQueue)
         {
             context = Context.FromType(DeviceType.Gpu);
+            
+            var platform = Platform.GetDiscovered().First();
 
-            Platform.Get(out var platforms);
-            var platform = platforms[0];
+            device = platform.GetDevicesOfType(DeviceType.Gpu).First();
 
-            platform.GetDevices(DeviceType.Gpu, out var devices);
-            device = devices[0];
-
-            commandQueue = new CommandQueue(context, device);
+            QueueProperties[] properties = [
+                (QueueProperties)CommandQueueInfo.Properties, (QueueProperties) CommandQueueProperties.ProfilingEnable,
+                0
+            ];
+            commandQueue = new CommandQueue(context, device, properties);
         }
     }
 
@@ -39,20 +42,22 @@ namespace SparkCL
         static internal CommandQueue? queue;
         static internal SparkOCL.Device? device;
 
-        static public List<Event> IOEvents = new(32);
-        static public List<Event> KernEvents = new(32);
+        static public List<Event> IOEvents { get; private set; } = new(32);
+        static public List<Event> KernEvents { get; private set; } = new(32);
         
         static public void Init()
         {
             context = Context.FromType(DeviceType.Gpu);
 
-            Platform.Get(out var platforms);
-            var platform = platforms[0];
+            var platform = Platform.GetDiscovered().First();
 
-            platform.GetDevices(DeviceType.Gpu, out var devices);
-            device = devices[0];
+            device = platform.GetDevicesOfType(DeviceType.Gpu).First();
 
-            queue = new CommandQueue(context, device);
+            QueueProperties[] properties = [
+                (QueueProperties)CommandQueueInfo.Properties, (QueueProperties) CommandQueueProperties.ProfilingEnable,
+                0
+            ];
+            queue = new CommandQueue(context, device, properties);
         }
         
         #if DEBUG_TIME
@@ -136,6 +141,9 @@ namespace SparkCL
                 "double" => typeof(double),
                 "int" => typeof(int),
                 "uint" => typeof(uint),
+                "uchar" => typeof(byte),
+                "uchar4" => typeof(byte),
+                "long" => typeof(long),
                 _ => throw new NotImplementedException(),
             };
         }
@@ -201,13 +209,13 @@ namespace SparkCL
             T arg)
         where T: unmanaged, INumber<T>
         {
-            Inner.SetArg(idx, arg);
-
             var info = GetArgInfo(idx);
             if (!info.IsEqualTo(arg))
             {
                 throw new ArgumentException($"Expected \"{info.TypeName}\", got \"{typeof(T)}\"");
             }
+
+            Inner.SetArg(idx, arg);
         }
 
         public void SetArg<T>(
@@ -215,13 +223,13 @@ namespace SparkCL
             SparkCL.Memory<T> mem)
         where T: unmanaged, INumber<T>
         {
-            Inner.SetArg(idx, mem.buffer);
-            
             var info = GetArgInfo(idx);
             if (!info.IsEqualTo(mem))
             {
                 throw new ArgumentException($"Expected \"{info.TypeName}\", got \"{typeof(T)}*\"");
             }
+            
+            Inner.SetArg(idx, mem._buffer);
         }
 
         public void SetSize<T>(
@@ -229,13 +237,13 @@ namespace SparkCL
             nuint sz)
         where T: unmanaged
         {
-            Inner.SetSize<T>(idx, sz);
-
             var info = GetArgInfo(idx);
             if (!info.IsEqualTo(sz))
             {
                 throw new ArgumentException($"Expected \"{info.TypeName}\", got \"{typeof(T)}\"");
             }
+
+            Inner.SetSize<T>(idx, sz);
         }
         
         public ArgInfo GetArgInfo(uint arg_index)
@@ -253,57 +261,145 @@ namespace SparkCL
         }
     }
 
-    public unsafe class Memory<T> : IDisposable, IEnumerable<T>
-    where T: unmanaged, INumber<T> 
+    unsafe interface IReadOnlyMemAccessor<T>
+    where T: unmanaged, INumber<T>
     {
-        internal Buffer<T> buffer;
-//        internal void* mappedPtr;
-        public Array<T> Array { get; }
-        public int Count { get => Array.Count; }
+        internal T* _ptr { get; }
+        int Length{ get; }
+        T this[int i] { get; }
+    }
 
-        public Memory(ReadOnlySpan<T> in_array, MemFlags flags = MemFlags.ReadWrite)
+    interface IMemAccessor<T> : IReadOnlyMemAccessor<T>
+    where T: unmanaged, INumber<T>
+    {
+        new T this[int i] { get; set; }
+    }
+
+    public unsafe class Accessor<T> : IMemAccessor<T>, IDisposable
+    where T: unmanaged, INumber<T>
+    {
+        internal T* ptr { get; }
+        unsafe T* IReadOnlyMemAccessor<T>._ptr => ptr;
+        private bool disposedValue;
+        Memory<T> _master;
+
+        public int Length { get; private set; }
+
+
+        public T this[int i]
         {
-            this.Array = new(in_array);
-            buffer = new(Core.context!, flags | MemFlags.UseHostPtr, this.Array);
+            // TODO: measure performace
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            get => ptr[i];
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            set => ptr[i] = value;
         }
 
-        static public Memory<T> ForArray(Array<T> in_array, MemFlags flags = MemFlags.ReadWrite)
+        internal Accessor(Memory<T> buffer, T* ptr, int length)
         {
-            var buffer = new Buffer<T>(Core.context!, flags | MemFlags.UseHostPtr, in_array);
-            return new Memory<T>(buffer, in_array);
-        }
-
-        public Memory (int size, MemFlags flags = MemFlags.ReadWrite)
-        {
-            Array = new(size);
-            buffer = new(Core.context!, flags | MemFlags.UseHostPtr, this.Array);
-        }
-
-        Memory(Buffer<T> buffer, Array<T> array) {
-            this.buffer = buffer;
-            this.Array = array;
+            _master = buffer;
+            this.ptr = ptr;
+            Length = length;
         }
 
         public Span<T> AsSpan()
         {
-            var res = new Span<T>(Array.Buf, Array.Count);
+            return new Span<T>(ptr, Length);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposedValue)
+            {
+                if (disposing)
+                {
+                    // TODO: освободить управляемое состояние (управляемые объекты)
+                    _master.UnmapAccessor(this);
+                }
+
+                // TODO: освободить неуправляемые ресурсы (неуправляемые объекты) и переопределить метод завершения
+                // TODO: установить значение NULL для больших полей
+                disposedValue = true;
+            }
+        }
+
+        // // TODO: переопределить метод завершения, только если "Dispose(bool disposing)" содержит код для освобождения неуправляемых ресурсов
+        // ~Accessor()
+        // {
+        //     // Не изменяйте этот код. Разместите код очистки в методе "Dispose(bool disposing)".
+        //     Dispose(disposing: false);
+        // }
+
+        public void Dispose()
+        {
+            // Не изменяйте этот код. Разместите код очистки в методе "Dispose(bool disposing)".
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
+        }
+    }
+
+    public unsafe class Memory<T>
+    where T: unmanaged, INumber<T> 
+    {
+        internal Buffer<T> _buffer;
+        // internal T[] _storage;
+        // should be a pointer to _storage
+        // internal T* _storage;
+        // public Array<T> Array { get; }
+        public int Length { get; private set; }
+
+        public Memory(ReadOnlySpan<T> in_array, MemFlags flags = MemFlags.ReadWrite)
+        {
+            Length = in_array.Length;
+            _buffer = new(Core.context!, flags | MemFlags.CopyHostPtr, in_array);
+            _buffer = Buffer<T>.NewCopyHost(Core.context!, MemFlags.ReadWrite, in_array);
+        }
+
+        internal void UnmapAccessor(IReadOnlyMemAccessor<T> accessor)
+        {
+            Core.queue!.EnqueueUnmapMemObject(_buffer, accessor._ptr, out _);
+        }
+
+        public Accessor<T> GetAccessor()
+        {
+            var ptr = Map(MapFlags.Write);
+            return new Accessor<T>(this, ptr, Length);
+        }
+/*
+        public Memory (int size, MemFlags flags = MemFlags.ReadWrite)
+        {
+
+            _storage = new T[size];
+            _buffer = new(Core.context!, flags | MemFlags.UseHostPtr, _storage);
+        }
+
+        Memory(Buffer<T> buffer, T[] storage) {
+            _buffer = buffer;
+            _storage = storage;
+        }
+*/
+        /*
+        public Span<T> AsSpan()
+        {
+            return new Span<T>(_storage, Length);
+        }
+        */
+
+        T* Map(
+           MapFlags flags,
+           bool blocking = true
+        )
+        {
+            var res = (T*)Core.queue!.EnqueueMapBuffer(_buffer, blocking, flags, 0, (nuint)Length, out var ev);
+            #if DEBUG_TIME
+                Core.IOEvents.Add(ev);
+            #endif
+            if (blocking)
+            {
+                ev.Wait();
+            }
             return res;
         }
-
-        public T this[int i]
-        {
-            get => Array[i];
-            set => Array[i] = value;
-        }
-
-        //public Event Map(
-        //    MapFlags flags,
-        //    bool blocking = true
-        //)
-        //{
-        //    mappedPtr = Core.queue!.EnqueueMapBuffer(buffer, blocking, flags, 0, array.Count, out var ev);
-        //    return ev;
-        //}
 
         //unsafe public Event Unmap()
         //{
@@ -311,12 +407,13 @@ namespace SparkCL
         //    return ev;
         //}
 
+        /*
         public Event Read(
             bool blocking = true,
             Event[]? wait_list = null
         )
         {
-            Core.queue!.EnqueueReadBuffer(buffer, blocking, 0, Array, out var ev);
+            Core.queue!.EnqueueReadBuffer(_buffer, blocking, 0, AsSpan(), out var ev);
             #if DEBUG_TIME
                 Core.IOEvents.Add(ev);
             #endif
@@ -327,12 +424,13 @@ namespace SparkCL
             bool blocking = true
         )
         {
-            Core.queue!.EnqueueWriteBuffer(buffer, blocking, 0, Array, out var ev);
+            Core.queue!.EnqueueWriteBuffer(_buffer, blocking, 0, AsSpan(), out var ev);
             #if DEBUG_TIME
                 Core.IOEvents.Add(ev);
             #endif
             return ev;
         }
+        */
 
         public Event CopyTo(
             Memory<T> destination,
@@ -340,11 +438,11 @@ namespace SparkCL
             Event[]? waitList = null
         )
         {
-            if (Count != destination.Count)
+            if (Length != destination.Length)
             {
                 throw new Exception("Source and destination sizes doesn't match");
             }
-            Core.queue!.EnqueueCopyBuffer(buffer, destination.buffer, 0, 0, (nuint) Count, out var ev, waitList);
+            Core.queue!.EnqueueCopyBuffer(_buffer, destination._buffer, 0, 0, (nuint) Length, out var ev, waitList);
             #if DEBUG_TIME
                 Core.KernEvents.Add(ev);
             #endif
@@ -354,7 +452,7 @@ namespace SparkCL
             }
             return ev;
         }
-
+/*
         public float DotHost(Memory<float> rhs)
         {
             float res = (float)BLAS.dot(
@@ -374,46 +472,6 @@ namespace SparkCL
             );
             return res;
         }
-
-        private bool disposedValue;
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (!disposedValue)
-            {
-                if (disposing)
-                {
-                    // TODO: dispose managed state (managed objects)
-                }
-                Array.Dispose();
-                // TODO: free unmanaged resources (unmanaged objects) and override finalizer
-                // TODO: set large fields to null
-                disposedValue = true;
-            }
-        }
-
-        // TODO: override finalizer only if 'Dispose(bool disposing)' has code to free unmanaged resources
-        ~Memory()
-        {
-            // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-            Dispose(disposing: false);
-        }
-
-        public void Dispose()
-        {
-            // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-            Dispose(disposing: true);
-            GC.SuppressFinalize(this);
-        }
-
-        public IEnumerator<T> GetEnumerator()
-        {
-            return Array.GetEnumerator();
-        }
-
-        IEnumerator IEnumerable.GetEnumerator()
-        {
-            return GetEnumerator();
-        }
+*/
     }
 }
