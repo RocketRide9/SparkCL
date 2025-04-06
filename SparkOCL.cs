@@ -200,6 +200,50 @@ namespace SparkOCL
         DeviceType Type { get; }
         public nint Handle { get; }
 
+        [Obsolete]
+        unsafe public bool IsHostUnifiedMemory {
+            get {
+                GetInfo<bool>(
+                    DeviceInfo.HostUnifiedMemory,
+                    0, null,
+                    out var size_ret
+                );
+
+                bool res;
+                GetInfo(
+                    DeviceInfo.HostUnifiedMemory, 
+                    size_ret, &res,
+                    out _
+                );
+
+                return res;
+            }
+        }
+
+        unsafe private void GetInfo<Y>(
+            DeviceInfo param_name,
+            nuint info_size,
+            Y *info_value,
+            out nuint info_size_ret)
+        where Y: unmanaged
+        {
+            var err = (ErrorCodes)OCL.GetDeviceInfo(
+                Handle,
+                param_name,
+                info_size,
+                info_value,
+                out info_size_ret
+            );
+                
+            if (err != ErrorCodes.Success)
+            {
+                throw new Exception(AppendErrCode(
+                    $"Failed to get device info ({param_name}), code: ",
+                    err
+                ));
+            }
+        }
+
         internal Device(nint h)
         {
             Handle = h;
@@ -650,17 +694,18 @@ namespace SparkOCL
     where T : unmanaged, INumber<T>
     {
         public nint Handle { get; }
+        public bool IsOnHost { get; }
 
-        unsafe public static Buffer<T> NewCopyHost(Context context, MemFlags flags, ReadOnlySpan<T> array)
+        unsafe public static Buffer<T> NewCopyHost(Context context, MemFlags flags, ReadOnlySpan<T> initial)
         {
             nint handle;
             ErrorCodes err;
-            fixed(T* array_p = array)
+            fixed(T* array_p = initial)
             {
                 handle = OCL.CreateBuffer(
                     context.Handle,
                     MemFlags.CopyHostPtr | flags,
-                    (nuint) sizeof(T) * (nuint)array.Length,
+                    (nuint) sizeof(T) * (nuint)initial.Length,
                     array_p,
                     (int *)&err
                 );
@@ -670,30 +715,49 @@ namespace SparkOCL
                 throw new Exception(AppendErrCode("Failed to create buffer, code: ", err));
             }
 
-            return new Buffer<T>(handle);
+            var isOnHost = flags.HasFlag(MemFlags.AllocHostPtr) || flags.HasFlag(MemFlags.UseHostPtr);
+            return new Buffer<T>(handle, isOnHost);
         }
 
-        unsafe public Buffer(Context context, MemFlags flags, ReadOnlySpan<T> array)
+        unsafe public static Buffer<T> NewAllocHost(Context context, MemFlags flags, nuint length)
         {
             ErrorCodes err;
-            fixed(T* array_p = array)
+            nint handle;
+            handle = OCL.CreateBuffer(
+                context.Handle,
+                MemFlags.AllocHostPtr | flags,
+                (nuint) sizeof(T) * length,
+                null,
+                (int *)&err
+            );
+            
+            if (err != ErrorCodes.Success)
             {
-                Handle = OCL.CreateBuffer(
-                    context.Handle,
-                    flags,
-                    (nuint) sizeof(T) * (nuint)array.Length,
-                    array_p,
-                    (int *)&err
-                );
+                throw new Exception(AppendErrCode("Failed to create buffer, code: ", err));
             }
+
+            return new Buffer<T>(handle, true);
+        }
+
+        unsafe public Buffer(Context context, MemFlags flags, nuint length)
+        {
+            ErrorCodes err;
+            Handle = OCL.CreateBuffer(
+                context.Handle,
+                flags,
+                (nuint) sizeof(T) * (nuint)length,
+                null,
+                (int *)&err
+            );
             if (err != ErrorCodes.Success)
             {
                 throw new Exception(AppendErrCode("Failed to create buffer, code: ", err));
             }
         }
 
-        Buffer(nint handle)
+        Buffer(nint handle, bool isOnHost)
         {
+            IsOnHost = isOnHost;
             Handle = handle;
         }
 

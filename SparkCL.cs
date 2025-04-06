@@ -92,8 +92,9 @@ namespace SparkCL
     {
         public static ulong GetElapsed(this SparkOCL.Event @event)
         {
-            var s = @event.GetProfilingInfo(ProfilingInfo.Start);
-            var c = @event.GetProfilingInfo(ProfilingInfo.End);
+            var s = @event.GetProfilingInfo(ProfilingInfo.Queued);
+            var c = @event.GetProfilingInfo(ProfilingInfo.Complete
+            );
 
             return c - s;
         }
@@ -138,6 +139,7 @@ namespace SparkCL
             DataType = typeName switch
             {
                 "float" => typeof(float),
+                "float4" => typeof(float),
                 "double" => typeof(double),
                 "int" => typeof(int),
                 "uint" => typeof(uint),
@@ -154,7 +156,7 @@ namespace SparkCL
             return typeof(T) == DataType;
         }
 
-        public bool IsEqualTo<T>(Memory<T> _)
+        public bool IsEqualTo<T>(ComputeBuffer<T> _)
         where T: unmanaged, INumber<T>
         {
             return IsPointer && DataType == typeof(T);
@@ -187,7 +189,7 @@ namespace SparkCL
         }
         
         public uint PushArg<T>(
-            SparkCL.Memory<T> mem)
+            SparkCL.ComputeBuffer<T> mem)
         where T: unmanaged, INumber<T>
         {
             SetArg(lastPushed, mem);
@@ -220,7 +222,7 @@ namespace SparkCL
 
         public void SetArg<T>(
             uint idx,
-            SparkCL.Memory<T> mem)
+            SparkCL.ComputeBuffer<T> mem)
         where T: unmanaged, INumber<T>
         {
             var info = GetArgInfo(idx);
@@ -281,7 +283,7 @@ namespace SparkCL
         internal T* ptr { get; }
         unsafe T* IReadOnlyMemAccessor<T>._ptr => ptr;
         private bool disposedValue;
-        Memory<T> _master;
+        ComputeBuffer<T> _master;
 
         public int Length { get; private set; }
 
@@ -295,7 +297,7 @@ namespace SparkCL
             set => ptr[i] = value;
         }
 
-        internal Accessor(Memory<T> buffer, T* ptr, int length)
+        internal Accessor(ComputeBuffer<T> buffer, T* ptr, int length)
         {
             _master = buffer;
             this.ptr = ptr;
@@ -338,7 +340,7 @@ namespace SparkCL
         }
     }
 
-    public unsafe class Memory<T>
+    public unsafe class ComputeBuffer<T>
     where T: unmanaged, INumber<T> 
     {
         internal Buffer<T> _buffer;
@@ -348,11 +350,15 @@ namespace SparkCL
         // public Array<T> Array { get; }
         public int Length { get; private set; }
 
-        public Memory(ReadOnlySpan<T> in_array, MemFlags flags = MemFlags.ReadWrite)
+        public ComputeBuffer(ReadOnlySpan<T> in_array, MemFlags flags = MemFlags.ReadWrite)
         {
             Length = in_array.Length;
-            _buffer = new(Core.context!, flags | MemFlags.CopyHostPtr, in_array);
             _buffer = Buffer<T>.NewCopyHost(Core.context!, MemFlags.ReadWrite, in_array);
+        }
+        public ComputeBuffer(int length, MemFlags flags = MemFlags.ReadWrite)
+        {
+            Length = length;
+            _buffer = new Buffer<T>(Core.context!, flags, (nuint)length);
         }
 
         internal void UnmapAccessor(IReadOnlyMemAccessor<T> accessor)
@@ -360,19 +366,12 @@ namespace SparkCL
             Core.queue!.EnqueueUnmapMemObject(_buffer, accessor._ptr, out _);
         }
 
-        public Accessor<T> GetAccessor()
+        public Accessor<T> MapAccessor(MapFlags flags)
         {
-            var ptr = Map(MapFlags.Write);
+            var ptr = Map(flags);
             return new Accessor<T>(this, ptr, Length);
         }
 /*
-        public Memory (int size, MemFlags flags = MemFlags.ReadWrite)
-        {
-
-            _storage = new T[size];
-            _buffer = new(Core.context!, flags | MemFlags.UseHostPtr, _storage);
-        }
-
         Memory(Buffer<T> buffer, T[] storage) {
             _buffer = buffer;
             _storage = storage;
@@ -433,7 +432,7 @@ namespace SparkCL
         */
 
         public Event CopyTo(
-            Memory<T> destination,
+            ComputeBuffer<T> destination,
             bool blocking = true,
             Event[]? waitList = null
         )
