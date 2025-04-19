@@ -431,6 +431,15 @@ namespace SparkCL
         }
         */
 
+        public void ReadTo(
+            Span<T> destination
+        )
+        {
+            var acc = MapAccessor(MapFlags.Read);
+            acc.AsSpan().CopyTo(destination);
+            acc.Dispose();
+        }
+
         public Event CopyTo(
             ComputeBuffer<T> destination,
             bool blocking = true,

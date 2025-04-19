@@ -772,14 +772,15 @@ namespace SparkOCL
     /// allows zero-copy when plugged into OpenCL buffer.
     /// </summary>
     /// <typeparam name="T"></typeparam>
-    public unsafe class Array<T> : IDisposable, IEnumerable<T>
+    [Obsolete("Allocate memory using OpenCL buffers with ALLOC_HOST flag instead")]
+    public unsafe class DeprecatedArray<T> : IDisposable, IEnumerable<T>
     where T: unmanaged, INumber<T>
     {
         public T* Buf { get; internal set; }
         public int Count { get; }
         public nuint ElementSize { get; }
 
-        public Array (ReadOnlySpan<T> array)
+        public DeprecatedArray (ReadOnlySpan<T> array)
         {
             ElementSize = (nuint)sizeof(T);
             Buf = (T*)NativeMemory.AlignedAlloc((nuint)array.Length * ElementSize, 4096);
@@ -787,14 +788,14 @@ namespace SparkOCL
             array.CopyTo(new Span<T>(Buf, array.Length));
         }
 
-        public Array (int size)
+        public DeprecatedArray (int size)
         {
             ElementSize = (nuint)sizeof(T);
             Buf = (T*)NativeMemory.AlignedAlloc((nuint)size * ElementSize, 4096);
             Count = size;
         }
 
-        public Array (StreamReader file)
+        public DeprecatedArray (StreamReader file)
         {
             var sizeStr = file.ReadLine();
 
@@ -848,7 +849,7 @@ namespace SparkOCL
         }
 
         // TODO: override finalizer only if 'Dispose(bool disposing)' has code to free unmanaged resources
-        ~Array()
+        ~DeprecatedArray()
         {
             // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
             Dispose(disposing: false);
@@ -874,7 +875,7 @@ namespace SparkOCL
             return GetEnumerator();
         }
 
-        public void CopyTo(Array<T> destination)
+        public void CopyTo(DeprecatedArray<T> destination)
         {
             var sp = new Span<T>(Buf, this.Count);
             var sp2 = new Span<T>(destination.Buf, destination.Count);
