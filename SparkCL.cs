@@ -21,10 +21,10 @@ namespace SparkCL
             out SparkOCL.Device device,
             out SparkOCL.CommandQueue commandQueue)
         {
-            context = Context.FromType(DeviceType.Gpu);
+            var platform = Platform.GetDiscovered().First();
 
-            Platform.Get(out var platforms);
-            var platform = platforms[0];
+            device = platform.GetDevicesOfType(DeviceType.Gpu).First();
+            context = Context.FromDevice(device);
 
             platform.GetDevices(DeviceType.Gpu, out var devices);
             device = devices[0];
@@ -39,29 +39,46 @@ namespace SparkCL
         static internal CommandQueue? queue;
         static internal SparkOCL.Device? device;
 
-        static public List<Event> IOEvents = new(32);
-        static public List<Event> KernEvents = new(32);
-        
+        static public List<Event> IOEvents { get; private set; } = new(32);
+        static public List<Event> KernEvents { get; private set; } = new(32);
+
         static public void Init()
         {
-            context = Context.FromType(DeviceType.Gpu);
+            var platforms = Platform.GetDiscovered();
 
-            Platform.Get(out var platforms);
-            var platform = platforms[0];
+            Platform platform;
+            // Avoid Clover if possible
+            if (platforms[0].GetName() == "Clover" && platforms.Length > 1)
+            {
+                platform = platforms[1];
+            } else {
+                platform = platforms[0];
+            }
+
+            Console.WriteLine($"Platform: {platform.GetName()}");
+            Console.WriteLine($"Version: {platform.GetVersion()}");
 
             platform.GetDevices(DeviceType.Gpu, out var devices);
             device = devices[0];
 
-            queue = new CommandQueue(context, device);
+            Console.WriteLine($"Device: {device.GetName()}");
+
+            context = Context.FromDevice(device);
+
+            QueueProperties[] properties = [
+                (QueueProperties)CommandQueueInfo.Properties, (QueueProperties) CommandQueueProperties.ProfilingEnable,
+                0
+            ];
+            queue = new CommandQueue(context, device, properties);
         }
-        
+
         #if DEBUG_TIME
         // Должна быть вызвана после завершения всех операций на устройстве
         static public (ulong IOTime, ulong KernTime) MeasureTime()
         {
             ulong IO = 0;
             ulong Kern = 0;
-            
+
             foreach (var ev in IOEvents)
             {
                 IO += ev.GetElapsed();
@@ -74,6 +91,11 @@ namespace SparkCL
             IOEvents.Clear();
 
             return (IO, Kern);
+        }
+        static public void ResetTime()
+        {
+            KernEvents.Clear();
+            IOEvents.Clear();
         }
         #endif
 
@@ -152,7 +174,7 @@ namespace SparkCL
             return IsPointer && DataType == typeof(T);
         }
     }
-    
+
     public class Kernel
     {
         SparkOCL.Kernel Inner;
@@ -177,7 +199,7 @@ namespace SparkCL
             }
             return ev;
         }
-        
+
         public uint PushArg<T>(
             SparkCL.Memory<T> mem)
         where T: unmanaged, INumber<T>
@@ -214,14 +236,14 @@ namespace SparkCL
             uint idx,
             SparkCL.Memory<T> mem)
         where T: unmanaged, INumber<T>
-        {
-            Inner.SetArg(idx, mem.buffer);
-            
+        {   
             var info = GetArgInfo(idx);
             if (!info.IsEqualTo(mem))
             {
                 throw new ArgumentException($"Expected \"{info.TypeName}\", got \"{typeof(T)}*\"");
             }
+
+            Inner.SetArg(idx, mem._hostBuffer);
         }
 
         public void SetSize<T>(
@@ -237,7 +259,7 @@ namespace SparkCL
                 throw new ArgumentException($"Expected \"{info.TypeName}\", got \"{typeof(T)}\"");
             }
         }
-        
+
         public ArgInfo GetArgInfo(uint arg_index)
         {
             var name = Inner.GetArgTypeName(arg_index);
@@ -296,14 +318,123 @@ namespace SparkCL
             set => Array[i] = value;
         }
 
-        //public Event Map(
-        //    MapFlags flags,
-        //    bool blocking = true
-        //)
-        //{
-        //    mappedPtr = Core.queue!.EnqueueMapBuffer(buffer, blocking, flags, 0, array.Count, out var ev);
-        //    return ev;
-        //}
+        internal Accessor(ComputeBuffer<T> buffer, T* ptr, int length)
+        {
+            _master = buffer;
+            this.ptr = ptr;
+            Length = length;
+        }
+
+        public Span<T> AsSpan()
+        {
+            return new Span<T>(ptr, Length);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposedValue)
+            {
+                if (disposing)
+                {
+                    // TODO: освободить управляемое состояние (управляемые объекты)
+                    _master.UnmapAccessor(this);
+                }
+
+                // TODO: освободить неуправляемые ресурсы (неуправляемые объекты) и переопределить метод завершения
+                // TODO: установить значение NULL для больших полей
+                disposedValue = true;
+            }
+        }
+
+        // // TODO: переопределить метод завершения, только если "Dispose(bool disposing)" содержит код для освобождения неуправляемых ресурсов
+        // ~Accessor()
+        // {
+        //     // Не изменяйте этот код. Разместите код очистки в методе "Dispose(bool disposing)".
+        //     Dispose(disposing: false);
+        // }
+
+        public void Dispose()
+        {
+            // Не изменяйте этот код. Разместите код очистки в методе "Dispose(bool disposing)".
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
+        }
+    }
+
+    public unsafe class ComputeBuffer<T>
+    where T: unmanaged, INumber<T>
+    {
+        internal Buffer<T> _hostBuffer;
+        // internal T[] _storage;
+        // should be a pointer to _storage
+        // internal T* _storage;
+        // public Array<T> Array { get; }
+        public int Length { get; private set; }
+
+        public ComputeBuffer(ReadOnlySpan<T> in_array, MemFlags flags = MemFlags.ReadWrite)
+        {
+            Length = in_array.Length;
+            _hostBuffer = Buffer<T>.NewCopyHost(Core.context!, MemFlags.ReadWrite, in_array);
+        }
+        public ComputeBuffer(int length, MemFlags flags = MemFlags.ReadWrite)
+        {
+            Length = length;
+            _hostBuffer = new Buffer<T>(Core.context!, flags, (nuint)length);
+        }
+        
+        /*
+        public void SendToDevice(bool blocking = true)
+        {
+            Core.queue!.EnqueueCopyBuffer(_deviceBuffer, _hostBuffer, 0, 0, Length, out var ev);
+            
+            #if DEBUG_TIME
+                Core.IOEvents.Add(ev);
+            #endif
+            if (blocking)
+            {
+                ev.Wait();
+            }
+        }
+        */
+ 
+        internal void UnmapAccessor(IReadOnlyMemAccessor<T> accessor)
+        {
+            Core.queue!.EnqueueUnmapMemObject(_hostBuffer, accessor._ptr, out _);
+        }
+
+        public Accessor<T> MapAccessor(MapFlags flags)
+        {
+            var ptr = Map(flags);
+            return new Accessor<T>(this, ptr, Length);
+        }
+/*
+        Memory(Buffer<T> buffer, T[] storage) {
+            _buffer = buffer;
+            _storage = storage;
+        }
+*/
+        /*
+        public Span<T> AsSpan()
+        {
+            return new Span<T>(_storage, Length);
+        }
+        */
+
+        T* Map(
+           MapFlags flags,
+           bool blocking = true
+        )
+        {
+            var res = (T*)Core.queue!.EnqueueMapBuffer(_hostBuffer, blocking, flags, 0, (nuint)Length, out var ev);
+            #if DEBUG_TIME
+                Core.IOEvents.Add(ev);
+            #endif
+            if (blocking)
+            {
+                ev.Wait();
+            }
+            return res;
+        }
 
         //unsafe public Event Unmap()
         //{
@@ -344,7 +475,7 @@ namespace SparkCL
             {
                 throw new Exception("Source and destination sizes doesn't match");
             }
-            Core.queue!.EnqueueCopyBuffer(buffer, destination.buffer, 0, 0, (nuint) Count, out var ev, waitList);
+            Core.queue!.EnqueueCopyBuffer(_hostBuffer, destination._hostBuffer, 0, 0, (nuint) Length, out var ev, waitList);
             #if DEBUG_TIME
                 Core.KernEvents.Add(ev);
             #endif

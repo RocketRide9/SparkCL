@@ -44,13 +44,12 @@ namespace SparkOCL
 
             return time;
         }
-        
+
         unsafe public void Wait()
         {
-
             var handle = Handle;
             var err = (ErrorCodes)OCL.WaitForEvents(1, &handle);
-            
+
             if (err != ErrorCodes.Success)
             {
                 throw new Exception(AppendErrCode("Couldn't wait for event, code: ", err));
@@ -113,13 +112,12 @@ namespace SparkOCL
             return res;
         }
 
+        [Obsolete("Bad implementation")]
         unsafe static public Context FromType(
             DeviceType type)
         {
+            var platforms = Platform.GetDiscovered();
 
-            var platforms = new List<Platform>();
-            Platform.Get(out platforms);
-            
             nint[] contextProperties =
             [
                 (nint)ContextProperties.Platform,
@@ -205,6 +203,62 @@ namespace SparkOCL
             }
         }
 
+        public string GetName()
+        {
+            return GetStringInfo(PlatformInfo.Name);
+        }
+        public string GetVersion()
+        {
+            return GetStringInfo(PlatformInfo.Version);
+        }
+
+        unsafe private string GetStringInfo(PlatformInfo platformInfo)
+        {
+            GetInfo<byte>(
+                platformInfo,
+                0, null,
+                out var size_ret
+            );
+
+            byte[] nameBytes = new byte[size_ret / sizeof(byte)];
+
+            fixed (byte *p_infoBytes = nameBytes)
+            {
+                GetInfo(
+                    platformInfo,
+                    size_ret, p_infoBytes,
+                    out _
+                );
+            }
+
+            var len = Array.IndexOf(nameBytes, (byte)0);
+            return Encoding.UTF8.GetString(nameBytes, 0, len);
+        }
+
+        unsafe private void GetInfo<Y>(
+            PlatformInfo platform_info,
+            nuint info_size,
+            Y *info_value,
+            out nuint info_size_ret)
+        where Y: unmanaged
+        {
+            var err = (ErrorCodes)OCL.GetPlatformInfo(
+                Handle,
+                platform_info,
+                info_size,
+                info_value,
+                out info_size_ret
+            );
+
+            if (err != ErrorCodes.Success)
+            {
+                throw new Exception(AppendErrCode(
+                    $"Failed to get platform info ({platform_info}), code: ",
+                    err
+                ));
+            }
+        }
+
         private Platform(nint h)
         {
             Handle = h;
@@ -215,6 +269,78 @@ namespace SparkOCL
     {
         DeviceType Type { get; }
         public nint Handle { get; }
+
+        [Obsolete]
+        unsafe public bool IsHostUnifiedMemory {
+            get {
+                GetInfo<bool>(
+                    DeviceInfo.HostUnifiedMemory,
+                    0, null,
+                    out var size_ret
+                );
+
+                bool res;
+                GetInfo(
+                    DeviceInfo.HostUnifiedMemory,
+                    size_ret, &res,
+                    out _
+                );
+
+                return res;
+            }
+        }
+
+        unsafe public string GetName()
+        {
+            return GetStringInfo(DeviceInfo.Name);
+        }
+
+        unsafe private string GetStringInfo(DeviceInfo deviceInfo)
+        {
+            GetInfo<byte>(
+                deviceInfo,
+                0, null,
+                out var size_ret
+            );
+
+            byte[] bytes = new byte[size_ret / sizeof(byte)];
+
+            fixed (byte *p_infoBytes = bytes)
+            {
+                GetInfo(
+                    deviceInfo,
+                    size_ret, p_infoBytes,
+                    out _
+                );
+            }
+
+            var len = Array.IndexOf(bytes, (byte)0);
+            return Encoding.UTF8.GetString(bytes, 0, len);
+        }
+
+        unsafe private void GetInfo<Y>(
+            DeviceInfo param_name,
+            nuint info_size,
+            Y *info_value,
+            out nuint info_size_ret)
+        where Y: unmanaged
+        {
+            var err = (ErrorCodes)OCL.GetDeviceInfo(
+                Handle,
+                param_name,
+                info_size,
+                info_value,
+                out info_size_ret
+            );
+
+            if (err != ErrorCodes.Success)
+            {
+                throw new Exception(AppendErrCode(
+                    $"Failed to get device info ({param_name}), code: ",
+                    err
+                ));
+            }
+        }
 
         internal Device(nint h)
         {
@@ -461,6 +587,70 @@ namespace SparkOCL
             @event = new Event(event_h);
         }
 
+        public unsafe void EnqueueReadBuffer<T>(
+            Buffer<T> buffer,
+            bool blocking,
+            nuint offset,
+            Span<T> array,
+            out Event @event,
+            Event[]? wait_list = null)
+        where T : unmanaged, INumber<T>
+        {
+            nint event_h;
+            ErrorCodes err;
+            fixed (nint *wait_list_p = Nintize(wait_list))
+            fixed (T *array_p = array)
+            {
+                err = (ErrorCodes)OCL.EnqueueReadBuffer(
+                    Handle,
+                    buffer.Handle,
+                    blocking,
+                    offset,
+                    (nuint) array.Length * (nuint) sizeof(T),
+                    array_p,
+                    wait_list == null ? 0 : (uint) wait_list.Length,
+                    wait_list == null ? null : wait_list_p,
+                    out event_h);
+            }
+            if (err != ErrorCodes.Success)
+            {
+                throw new Exception(AppendErrCode("Couldn't enqueue buffer read, code: ", err));
+            }
+            @event = new Event(event_h);
+        }
+
+        public unsafe void EnqueueWriteBuffer<T>(
+            Buffer<T> buffer,
+            bool blocking,
+            nuint offset,
+            ReadOnlySpan<T> array,
+            out Event @event)
+        where T : unmanaged, INumber<T>
+        {
+
+            nint event_h;
+            ErrorCodes err;
+            fixed (T* array_p = array)
+            {
+                err = (ErrorCodes)OCL.EnqueueWriteBuffer(
+                    Handle,
+                    buffer.Handle,
+                    blocking,
+                    offset,
+                    (nuint) array.Length * (nuint) sizeof(T),
+                    array_p,
+                    0,
+                    null,
+                    out event_h);
+            }
+
+            if (err != ErrorCodes.Success)
+            {
+                throw new Exception(AppendErrCode("Couldn't enqueue buffer read, code: ", err));
+            }
+            @event = new Event(event_h);
+        }
+
         public unsafe void EnqueueCopyBuffer<T>(
             Buffer<T> src,
             Buffer<T> dst,
@@ -526,8 +716,8 @@ namespace SparkOCL
         {
             OCL.ReleaseKernel(Handle);
         }
-        
-        unsafe private void GetKernelInfo<Y>(
+
+        unsafe private void GetArgInfo<Y>(
             uint arg_index,
             KernelArgInfo param_name,
             nuint param_value_size,
@@ -541,8 +731,8 @@ namespace SparkOCL
                 param_name,
                 param_value_size,
                 param_value,
-                param_value_size_ret);
-                
+                out param_value_size_ret);
+
             if (err != ErrorCodes.Success)
             {
                 throw new Exception(AppendErrCode(
@@ -551,25 +741,23 @@ namespace SparkOCL
                 ));
             }
         }
-        
+
         unsafe public string GetArgTypeName(
             uint arg_index
-        )
-        {
-            nuint size_ret;
-            GetKernelInfo<byte>(
+        ) {
+            GetArgInfo<byte>(
                 arg_index,
                 KernelArgInfo.TypeName, 
                 0, null,
                 &size_ret);
 
             byte[] infoBytes = new byte[size_ret / (nuint)sizeof(byte)];
-            
+
             fixed (byte *p_infoBytes = infoBytes)
             {
                 GetKernelInfo(
                     arg_index,
-                    KernelArgInfo.TypeName, 
+                    KernelArgInfo.TypeName,
                     size_ret, p_infoBytes,
                     null);
             }
@@ -577,7 +765,7 @@ namespace SparkOCL
             var len = Array.IndexOf(infoBytes, (byte)0);
             return Encoding.UTF8.GetString(infoBytes, 0, len);
         }
-        
+
         unsafe public KernelArgAddressQualifier GetArgAddressQualifier(
             uint arg_index
         )
@@ -586,7 +774,7 @@ namespace SparkOCL
 
             GetKernelInfo(
                 arg_index,
-                KernelArgInfo.AddressQualifier, 
+                KernelArgInfo.AddressQualifier,
                 sizeof(KernelArgAddressQualifier), &res,
                 null);
 
@@ -652,6 +840,52 @@ namespace SparkOCL
             {
                 throw new Exception(AppendErrCode("Failed to create buffer, code: ", err));
             }
+
+            var isOnHost = flags.HasFlag(MemFlags.AllocHostPtr) || flags.HasFlag(MemFlags.UseHostPtr);
+            return new Buffer<T>(handle, isOnHost);
+        }
+
+        unsafe public static Buffer<T> NewAllocHost(Context context, MemFlags flags, nuint length)
+        {
+            ErrorCodes err;
+            nint handle;
+            handle = OCL.CreateBuffer(
+                context.Handle,
+                MemFlags.AllocHostPtr | flags,
+                (nuint) sizeof(T) * length,
+                null,
+                (int *)&err
+            );
+
+            if (err != ErrorCodes.Success)
+            {
+                throw new Exception(AppendErrCode("Failed to create buffer, code: ", err));
+            }
+
+            return new Buffer<T>(handle, true);
+        }
+
+        unsafe public Buffer(Context context, MemFlags flags, nuint length)
+        {
+            ErrorCodes err;
+            Handle = OCL.CreateBuffer(
+                context.Handle,
+                flags,
+                (nuint) sizeof(T) * (nuint)length,
+                null,
+                (int *)&err
+            );
+            if (err != ErrorCodes.Success)
+            {
+                throw new Exception(AppendErrCode("Failed to create buffer, code: ", err));
+            }
+            IsOnHost = flags.HasFlag(MemFlags.AllocHostPtr) || flags.HasFlag(MemFlags.UseHostPtr);
+        }
+
+        Buffer(nint handle, bool isOnHost)
+        {
+            IsOnHost = isOnHost;
+            Handle = handle;
         }
 
         ~Buffer()
@@ -787,6 +1021,41 @@ namespace SparkOCL
     {
         internal nint Handle { get; }
 
+        unsafe public static Program CreateWithSource(
+            Context context,
+            string[] source
+        ) {
+            ErrorCodes err;
+            var handle = OCL.CreateProgramWithSource(context.Handle, 1, source, null, (int *)&err);
+
+            if (err != ErrorCodes.Success)
+            {
+                throw new Exception(AppendErrCode("Failed to create CL program from source, code: ", err));
+            }
+
+            return new(handle);
+        }
+
+        /// <summary>
+        ///
+        /// </summary>
+        /// <param name="options">utf8 null terminated string</param>
+        unsafe public void Build(
+            ReadOnlySpan<byte> options
+        )
+        {
+            ErrorCodes err;
+            fixed (byte *o = options)
+            {
+                err = (ErrorCodes)OCL.BuildProgram(Handle, 0, null, o, null, null);
+            }
+
+            if (err != ErrorCodes.Success)
+            {
+                throw new Exception(AppendErrCode("OpenCL build failed, code: ", err));
+            }
+        }
+
         unsafe static public Program FromFilename(
             Context context,
             Device device,
@@ -795,12 +1064,8 @@ namespace SparkOCL
             using var sr = new StreamReader(fileName);
             string clStr = sr.ReadToEnd();
 
-            ErrorCodes err;
-            var program = OCL.CreateProgramWithSource(context.Handle, 1, [clStr], null, (int *)&err);
-            if (program == IntPtr.Zero || err != ErrorCodes.Success)
-            {
-                throw new Exception(AppendErrCode("Failed to create CL program from source, code: ", err));
-            }
+            var program = CreateWithSource(context, [clStr]);
+
             var options = "-cl-kernel-arg-info"u8;
             fixed (byte *o = options)
             {
@@ -826,7 +1091,58 @@ namespace SparkOCL
                 throw new Exception(AppendErrCode("OpenCL build failed.", err));
             }
 
-            return new Program(program);
+            return program;
+        }
+
+        unsafe public string GetBuildLog(
+            Device device
+        ) {
+            GetBuildInfo<byte>(
+                device,
+                ProgramBuildInfo.BuildLog,
+                0, null, out var size_ret
+            );
+
+            byte[] logBytes = new byte[size_ret / sizeof(byte)];
+
+            fixed (byte *p_infoBytes = logBytes)
+            {
+                GetBuildInfo(
+                    device,
+                    ProgramBuildInfo.BuildLog,
+                    size_ret, p_infoBytes,
+                    out _
+                );
+            }
+
+            var len = Array.IndexOf(logBytes, (byte)0);
+            return Encoding.UTF8.GetString(logBytes, 0, len);
+        }
+
+        unsafe private void GetBuildInfo<Y>(
+            Device device,
+            ProgramBuildInfo build_info,
+            nuint info_size,
+            Y *info_value,
+            out nuint info_size_ret)
+        where Y: unmanaged
+        {
+            var err = (ErrorCodes)OCL.GetProgramBuildInfo(
+                Handle,
+                device.Handle,
+                build_info,
+                info_size,
+                info_value,
+                out info_size_ret
+            );
+
+            if (err != ErrorCodes.Success)
+            {
+                throw new Exception(AppendErrCode(
+                    $"Failed to get program build info ({build_info}), code: ",
+                    err
+                ));
+            }
         }
 
         Program(nint h)
