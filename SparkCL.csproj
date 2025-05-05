@@ -6,6 +6,11 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
   </PropertyGroup>
+  
+  <PropertyGroup>
+    <!-- Enable collection of time spans from profiling info of events -->
+    <DefineConstants>COLLECT_TIME</DefineConstants>
+  </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Silk.NET.OpenCL" Version="2.22.0" />
