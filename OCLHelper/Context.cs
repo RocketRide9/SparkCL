@@ -4,16 +4,21 @@ using static OCLHelper.CLHandle;
 
 namespace OCLHelper;
 
-class Context
+public class Context
 {
     public nint Handle { get; }
 
-    unsafe static public Context FromDevice(
-        Device device)
+    unsafe static public Context ForDevices(
+        Device[] devices)
     {
-        var device_h = device.Handle;
+        var devices_h = devices.Select(d => d.Handle).ToArray();
+        
         ErrorCodes err;
-        var h = OCL.CreateContext(null, 1, &device_h, null, null, (int *)&err);
+        nint h;
+        fixed (nint* devices_h_ptr = devices_h)
+        {
+            h = OCL.CreateContext(null, 1, devices_h_ptr, null, null, (int *)&err);
+        }
 
         if (err != ErrorCodes.Success)
         {

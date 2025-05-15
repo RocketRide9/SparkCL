@@ -17,7 +17,7 @@ public static class EventExt
     }
 }
 
-static class StarterKit
+static public class StarterKit
 {
     // создать объекты на первом попавшемся GPU
     static public void GetStarterKit(
@@ -25,10 +25,25 @@ static class StarterKit
         out OCLHelper.Device device,
         out OCLHelper.CommandQueue commandQueue)
     {
-        var platform = Platform.GetDiscovered().First();
+        var platforms = Platform.GetDiscovered();
+
+        Platform platform;
+        // Avoid Clover if possible
+        if (platforms[0].GetName() == "Clover" && platforms.Length > 1)
+        {
+            platform = platforms[1];
+        } else {
+            platform = platforms[0];
+        }
+
+        Console.WriteLine($"Platform: {platform.GetName()}");
+        Console.WriteLine($"Version: {platform.GetVersion()}");
 
         device = platform.GetDevicesOfType(DeviceType.Gpu).First();
-        context = Context.FromDevice(device);
+
+        Console.WriteLine($"Device: {device.GetName()}");
+
+        context = Context.ForDevices([device]);
 
         QueueProperties[] properties = [
             (QueueProperties)CommandQueueInfo.Properties, (QueueProperties) CommandQueueProperties.ProfilingEnable,
@@ -40,9 +55,9 @@ static class StarterKit
 
 static public class Core
 {
-    static internal Context? context;
-    static internal CommandQueue? queue;
-    static internal OCLHelper.Device? device;
+    static public Context? context;
+    static public CommandQueue? queue;
+    static public OCLHelper.Device? device;
 
     static public List<Event> IOEvents { get; private set; } = new(32);
     static public List<Event> KernEvents { get; private set; } = new(32);
@@ -67,7 +82,7 @@ static public class Core
 
         Console.WriteLine($"Device: {device.GetName()}");
 
-        context = Context.FromDevice(device);
+        context = Context.ForDevices([device]);
 
         QueueProperties[] properties = [
             (QueueProperties)CommandQueueInfo.Properties, (QueueProperties) CommandQueueProperties.ProfilingEnable,

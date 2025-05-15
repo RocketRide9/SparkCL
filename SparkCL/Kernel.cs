@@ -119,7 +119,7 @@ public class Kernel
             throw new ArgumentException($"Expected \"{info.TypeName}\", got \"{typeof(T)}*\"");
         }
 
-        Inner.SetArg(idx, mem._hostBuffer);
+        Inner.SetArg(idx, mem._deviceBuffer!);
     }
 
     public void SetSize<T>(

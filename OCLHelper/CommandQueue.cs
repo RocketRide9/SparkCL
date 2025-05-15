@@ -5,7 +5,7 @@ using static OCLHelper.CLHandle;
 
 namespace OCLHelper;
 
-class CommandQueue
+public class CommandQueue
 {
     public nint Handle { get; }
 
@@ -79,7 +79,7 @@ class CommandQueue
         }
     }
 
-    public unsafe void* EnqueueMapBuffer<T>(
+    public unsafe T* EnqueueMapBuffer<T>(
         Buffer<T> buffer,
         bool blocking,
         MapFlags flags,
@@ -90,7 +90,7 @@ class CommandQueue
     {
         nint event_h;
         ErrorCodes err;
-        var ptr = OCL.EnqueueMapBuffer(
+        var ptr = (T*)OCL.EnqueueMapBuffer(
             Handle,
             buffer.Handle,
             blocking,
@@ -113,7 +113,7 @@ class CommandQueue
 
     public unsafe void EnqueueUnmapMemObject<T>(
         IMemObject<T> buffer,
-        void *ptr,
+        T *ptr,
         out Event @event)
     where T : unmanaged, INumber<T>
     {

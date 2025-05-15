@@ -6,7 +6,7 @@ using static OCLHelper.CLHandle;
 
 namespace OCLHelper;
 
-class Kernel
+public class Kernel
 {
     public nint Handle { get; }
 

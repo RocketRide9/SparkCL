@@ -5,7 +5,7 @@ using static OCLHelper.CLHandle;
 
 namespace OCLHelper;
 
-class Program
+public class Program
 {
     internal nint Handle { get; }
 

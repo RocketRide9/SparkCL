@@ -5,7 +5,7 @@ using static OCLHelper.CLHandle;
 
 namespace OCLHelper;
 
-class Device
+public class Device
 {
     DeviceType Type { get; }
     public nint Handle { get; }

@@ -3,7 +3,7 @@ using Silk.NET.OpenCL;
 
 namespace OCLHelper;
 
-class Image<T> : IMemObject<T>
+public class Image<T> : IMemObject<T>
 where T : unmanaged, INumber<T>
 {
     public nint Handle { get; }

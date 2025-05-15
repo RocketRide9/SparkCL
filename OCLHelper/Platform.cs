@@ -5,7 +5,7 @@ using static OCLHelper.CLHandle;
 
 namespace OCLHelper;
 
-class Platform
+public class Platform
 {
     public nint Handle { get; }
     unsafe public static Platform[] GetDiscovered()

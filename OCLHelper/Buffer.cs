@@ -5,13 +5,14 @@ using static OCLHelper.CLHandle;
 
 namespace OCLHelper;
 
-class Buffer<T> : IMemObject<T>
+public class Buffer<T> : IMemObject<T>
 where T : unmanaged, INumber<T>
 {
     public nint Handle { get; }
     public bool IsOnHost { get; }
+    public int Length { get; }
 
-    unsafe public static Buffer<T> NewCopyHost(Context context, MemFlags flags, ReadOnlySpan<T> initial)
+    unsafe public static Buffer<T> NewCopy(Context context, MemFlags flags, ReadOnlySpan<T> initial)
     {
         nint handle;
         ErrorCodes err;
@@ -31,7 +32,7 @@ where T : unmanaged, INumber<T>
         }
 
         var isOnHost = flags.HasFlag(MemFlags.AllocHostPtr) || flags.HasFlag(MemFlags.UseHostPtr);
-        return new Buffer<T>(handle, isOnHost);
+        return new Buffer<T>(handle, isOnHost, initial.Length);
     }
 
     unsafe public static Buffer<T> NewAllocHost(Context context, MemFlags flags, nuint length)
@@ -51,7 +52,7 @@ where T : unmanaged, INumber<T>
             throw new Exception(AppendErrCode("Failed to create buffer, code: ", err));
         }
 
-        return new Buffer<T>(handle, true);
+        return new Buffer<T>(handle, true, (int)length);
     }
 
     unsafe public Buffer(Context context, MemFlags flags, nuint length)
@@ -68,13 +69,14 @@ where T : unmanaged, INumber<T>
         {
             throw new Exception(AppendErrCode("Failed to create buffer, code: ", err));
         }
-        IsOnHost = flags.HasFlag(MemFlags.AllocHostPtr) || flags.HasFlag(MemFlags.UseHostPtr);
+        IsOnHost = flags.HasFlag(MemFlags.AllocHostPtr);
     }
 
-    Buffer(nint handle, bool isOnHost)
+    Buffer(nint handle, bool isOnHost, int length)
     {
         IsOnHost = isOnHost;
         Handle = handle;
+        Length = length;
     }
 
     ~Buffer()

@@ -12,7 +12,7 @@ internal static class CLHandle
     }
 }
 
-interface IMemObject<T>
+public interface IMemObject<T>
 {
     public nint Handle { get; }
 }
