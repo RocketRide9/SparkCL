@@ -2,13 +2,13 @@ using OCLHelper;
 
 namespace SparkCL;
 
-public class Program
+public class ComputeProgram
 {
-    OCLHelper.Program program;
+    Program program;
 
-    public Program(string fileName)
+    public ComputeProgram(string fileName)
     {
-        program = OCLHelper.Program.FromFilename(Core.context!, Core.device!, fileName);
+        program = Program.FromFilename(Core.context!, Core.device!, fileName);
     }
 
     public SparkCL.Kernel GetKernel(string kernelName, NDRange globalWork, NDRange localWork)

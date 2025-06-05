@@ -22,6 +22,34 @@ where T: unmanaged, INumber<T>
     public int Length { get; }
     private BufferFlags _bufferFlags;
 
+    public Dictionary<int, T> FiveFirst { get {
+        var len = Math.Min(5, Length);
+        var res = new T[len];
+        var red = new Dictionary<int, T>(len);
+        Core.queue!.EnqueueReadBuffer(_deviceBuffer!, true, 0, res, out _);
+
+        for (int i = 0; i < len; i++)
+        {
+            red.Add(i, res[i]);
+        }
+
+        return red;
+    }}
+
+    public Dictionary<int, T> FiveLast { get {
+        var len = Math.Min(5, Length);
+        var res = new T[len];
+        var red = new Dictionary<int, T>(len);
+        Core.queue!.EnqueueReadBuffer(_deviceBuffer!, true, (uint)(Length - len), res, out _);
+
+        for (int i = 0; i < len; i++)
+        {
+            red.Add(Length - len + i, res[i]);
+        }
+
+        return red;
+    }}
+
     public ComputeBuffer(ReadOnlySpan<T> in_array, BufferFlags bufferFlags, MemFlags flags = MemFlags.ReadWrite)
     {
         if (flags.HasFlag(MemFlags.AllocHostPtr))
