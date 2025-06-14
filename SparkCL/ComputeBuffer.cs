@@ -111,7 +111,10 @@ where T: unmanaged, INumber<T>
 
     internal void UnmapAccessor(IReadOnlyMemAccessor<T> accessor)
     {
-        Core.queue!.EnqueueUnmapMemObject(_hostBuffer!, accessor._ptr, out _);
+        Core.queue!.EnqueueUnmapMemObject(_hostBuffer!, accessor._ptr, out var ev);
+#if COLLECT_TIME
+        Core.IOEvents.Add(ev);
+#endif
     }
 
     public Accessor<T> MapHost(MapFlags flags)
@@ -137,9 +140,9 @@ where T: unmanaged, INumber<T>
         bool blocking = true
     ) {
         var res = (T*)Core.queue!.EnqueueMapBuffer(_hostBuffer!, blocking, flags, 0, (nuint)Length, out var ev);
-        #if COLLECT_TIME
-            Core.IOEvents.Add(ev);
-        #endif
+#if COLLECT_TIME
+        Core.IOEvents.Add(ev);
+#endif
         if (blocking)
         {
             ev.Wait();
@@ -182,6 +185,9 @@ where T: unmanaged, INumber<T>
         Span<T> destination
     ) {
         Core.queue!.EnqueueReadBuffer(_hostBuffer!, true, 0, destination, out var ev, null);
+#if COLLECT_TIME
+        Core.IOEvents.Add(ev);
+#endif
         return ev;
     }
     
@@ -189,6 +195,9 @@ where T: unmanaged, INumber<T>
         Span<T> destination
     ) {
         Core.queue!.EnqueueReadBuffer(_deviceBuffer!, true, 0, destination, out var ev, null);
+#if COLLECT_TIME
+        Core.IOEvents.Add(ev);
+#endif
         return ev;
     }
 
@@ -206,7 +215,7 @@ where T: unmanaged, INumber<T>
             Core.queue!.EnqueueCopyBuffer(_hostBuffer!, _deviceBuffer!, 0, 0, (nuint) Length, out var ev, waitList);
             
 #if COLLECT_TIME
-                Core.KernEvents.Add(ev);
+            Core.IOEvents.Add(ev);
 #endif
             if (blocking)
             {
@@ -237,7 +246,7 @@ where T: unmanaged, INumber<T>
             Core.queue!.EnqueueCopyBuffer(_deviceBuffer!, _hostBuffer!, 0, 0, (nuint)Length, out var ev, waitList);
 
 #if COLLECT_TIME
-            Core.KernEvents.Add(ev);
+            Core.IOEvents.Add(ev);
 #endif
             if (blocking)
             {
@@ -267,9 +276,9 @@ where T: unmanaged, INumber<T>
         }
         
         Core.queue!.EnqueueCopyBuffer(_hostBuffer!, destination._hostBuffer!, 0, 0, (nuint) Length, out var ev, waitList);
-        #if COLLECT_TIME
-            Core.KernEvents.Add(ev);
-        #endif
+#if COLLECT_TIME
+        Core.KernEvents.Add(ev);
+#endif
         if (blocking)
         {
             ev.Wait();
@@ -292,9 +301,9 @@ where T: unmanaged, INumber<T>
         }
         
         Core.queue!.EnqueueCopyBuffer(_deviceBuffer!, destination._deviceBuffer!, 0, 0, (nuint) Length, out var ev, waitList);
-        #if COLLECT_TIME
-            Core.KernEvents.Add(ev);
-        #endif
+#if COLLECT_TIME
+        Core.KernEvents.Add(ev);
+#endif
         if (blocking)
         {
             ev.Wait();

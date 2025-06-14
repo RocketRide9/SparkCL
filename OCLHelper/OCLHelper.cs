@@ -40,6 +40,16 @@ public class NDRange
         return this;
     }
     
+    public NDRange PadTo(nuint multiplier)
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            Sizes[i] = (Sizes[i] / multiplier + 1 ) * multiplier;
+        }
+
+        return this;
+    }
+    
     public uint Dimensions { get; }
     public nuint[] Sizes { get; } = new nuint[3];
 

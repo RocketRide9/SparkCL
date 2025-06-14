@@ -55,13 +55,15 @@ static public class StarterKit
 
 static public class Core
 {
+    public const nuint Prefered1D = 32;
+
     static public Context? context;
     static public CommandQueue? queue;
     static public OCLHelper.Device? device;
-
+#if COLLECT_TIME
     static public List<Event> IOEvents { get; private set; } = new(32);
     static public List<Event> KernEvents { get; private set; } = new(32);
-
+#endif
     static public void Init()
     {
         var platforms = Platform.GetDiscovered();
