@@ -9,7 +9,7 @@
   
   <PropertyGroup>
     <!-- Enable collection of time spans from profiling info of events -->
-    <DefineConstants>COLLECT_TIME</DefineConstants>
+    <DefineConstants>TRACE;COLLECT_TIME</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 using OCLHelper;
 using Silk.NET.OpenCL;
 
@@ -10,8 +12,8 @@ public static class EventExt
 {
     public static ulong GetElapsed(this OCLHelper.Event @event)
     {
-        var s = @event.GetProfilingInfo(ProfilingInfo.Queued);
-        var c = @event.GetProfilingInfo(ProfilingInfo.Complete);
+        var s = @event.GetProfilingInfo(ProfilingInfo.Start);
+        var c = @event.GetProfilingInfo(ProfilingInfo.End);
 
         return c - s;
     }
@@ -66,8 +68,10 @@ static public class Core
 #endif
     static public void Init()
     {
+        Trace.Indent();
+        var sw = Stopwatch.StartNew();
         var platforms = Platform.GetDiscovered();
-
+        Trace.WriteLine($"Discover platforms: {sw.ElapsedMilliseconds}");
         Platform platform;
         // Avoid Clover if possible
         if (platforms[0].GetName() == "Clover" && platforms.Length > 1)
@@ -80,17 +84,24 @@ static public class Core
         Console.WriteLine($"Platform: {platform.GetName()}");
         Console.WriteLine($"Version: {platform.GetVersion()}");
 
+        sw.Restart();
         device = platform.GetDevicesOfType(DeviceType.Gpu).First();
-
+        Trace.WriteLine($"List devices: {sw.ElapsedMilliseconds}");
         Console.WriteLine($"Device: {device.GetName()}");
 
+        sw.Restart();
         context = Context.ForDevices([device]);
-
+        Trace.WriteLine($"Create context: {sw.ElapsedMilliseconds}");
+        
         QueueProperties[] properties = [
             (QueueProperties)CommandQueueInfo.Properties, (QueueProperties) CommandQueueProperties.ProfilingEnable,
             0
         ];
+        sw.Restart();
         queue = new CommandQueue(context, device, properties);
+        Trace.WriteLine($"Create queue: {sw.ElapsedMilliseconds}");
+        
+        Trace.Unindent();
     }
 
     #if COLLECT_TIME
