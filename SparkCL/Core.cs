@@ -94,7 +94,9 @@ static public class Core
         Trace.WriteLine($"Create context: {sw.ElapsedMilliseconds}");
         
         QueueProperties[] properties = [
+#if COLLECT_TIME
             (QueueProperties)CommandQueueInfo.Properties, (QueueProperties) CommandQueueProperties.ProfilingEnable,
+#endif
             0
         ];
         sw.Restart();

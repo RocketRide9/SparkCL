@@ -1,5 +1,6 @@
 using OCLHelper;
 using Silk.NET.OpenCL;
+using System.Diagnostics;
 using System.Numerics;
 
 namespace SparkCL;
@@ -65,14 +66,20 @@ public class Kernel
         Event[]? waitList = null
     )
     {
+        Trace.Indent();
+        var sw = Stopwatch.StartNew();
         Core.queue!.EnqueueNDRangeKernel(Inner, new NDRange(), GlobalWork, LocalWork, out var ev, waitList);
-        #if COLLECT_TIME
-            Core.KernEvents.Add(ev);
-        #endif
+        Trace.WriteLine($"Enqueue: {sw.ElapsedMilliseconds}");
+#if COLLECT_TIME
+        Core.KernEvents.Add(ev);
+#endif
         if (blocking)
         {
+            sw.Restart();       
             ev.Wait();
+            Trace.WriteLine($"Wait: {sw.ElapsedMilliseconds}");
         }
+        Trace.Unindent();
         return ev;
     }
 
