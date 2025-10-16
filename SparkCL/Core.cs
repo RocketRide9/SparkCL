@@ -71,7 +71,7 @@ static public class Core
         Trace.Indent();
         var sw = Stopwatch.StartNew();
         var platforms = Platform.GetDiscovered();
-        Trace.WriteLine($"Discover platforms: {sw.ElapsedMilliseconds}");
+        Trace.WriteLine($"Discover platforms: {sw.ElapsedMilliseconds}ms");
         Platform platform;
         // Avoid Clover if possible
         if (platforms[0].GetName() == "Clover" && platforms.Length > 1)
@@ -86,12 +86,12 @@ static public class Core
 
         sw.Restart();
         device = platform.GetDevicesOfType(DeviceType.Gpu).First();
-        Trace.WriteLine($"List devices: {sw.ElapsedMilliseconds}");
+        Trace.WriteLine($"List devices: {sw.ElapsedMilliseconds}ms");
         Console.WriteLine($"Device: {device.GetName()}");
 
         sw.Restart();
         context = Context.ForDevices([device]);
-        Trace.WriteLine($"Create context: {sw.ElapsedMilliseconds}");
+        Trace.WriteLine($"Create context: {sw.ElapsedMilliseconds}ms");
         
         QueueProperties[] properties = [
 #if COLLECT_TIME
@@ -101,7 +101,7 @@ static public class Core
         ];
         sw.Restart();
         queue = new CommandQueue(context, device, properties);
-        Trace.WriteLine($"Create queue: {sw.ElapsedMilliseconds}");
+        Trace.WriteLine($"Create queue: {sw.ElapsedMilliseconds}ms");
         
         Trace.Unindent();
     }

@@ -69,7 +69,7 @@ public class Kernel
         Trace.Indent();
         var sw = Stopwatch.StartNew();
         Core.queue!.EnqueueNDRangeKernel(Inner, new NDRange(), GlobalWork, LocalWork, out var ev, waitList);
-        Trace.WriteLine($"Enqueue: {sw.ElapsedMilliseconds}");
+        // Trace.WriteLine($"Enqueue: {sw.ElapsedMilliseconds}");
 #if COLLECT_TIME
         Core.KernEvents.Add(ev);
 #endif
@@ -77,7 +77,7 @@ public class Kernel
         {
             sw.Restart();       
             ev.Wait();
-            Trace.WriteLine($"Wait: {sw.ElapsedMilliseconds}");
+            // Trace.WriteLine($"Wait: {sw.ElapsedMilliseconds}");
         }
         Trace.Unindent();
         return ev;
